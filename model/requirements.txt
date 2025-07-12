@@ -1,6 +1,4 @@
 transformers==4.44.0
-accelerate==1.7.0
 datasets==3.4.0
 torch==2.7.1+cu128
 lm-eval==0.4.8
-
