@@ -32,7 +32,7 @@ class QLinearLayer(nn.Module):
         bias,
         p8_num, 
         p6_num,
-        reorder_index
+        reorder_index=None
     ) -> None:
         factory_kwargs = {"device": 'cuda', "dtype": torch.bfloat16}
         super().__init__()
@@ -88,8 +88,8 @@ class QLlamaMLP(nn.Module):
         config,
         p8_nums,
         p6_nums,
-        reorder_index,
-        i
+        i,
+        reorder_index=None,
     ):
         super().__init__()
         nameTemplate = 'layers.{}.{}.{}.{}'
@@ -102,19 +102,17 @@ class QLlamaMLP(nn.Module):
             in_features=self.hidden_size, out_features=self.intermediate_size, bias=config.mlp_bias,
             p6_num=p6_nums[nameTemplate.format(i, 'mlp', 'gate_proj', 'input')],
             p8_num=p8_nums[nameTemplate.format(i, 'mlp', 'gate_proj', 'input')],
-            reorder_index=reorder_index[nameTemplate.format(i, 'mlp', 'gate_proj', 'input')]
         )
         self.down_proj = QLinearLayer(
             in_features=self.intermediate_size, out_features=self.hidden_size, bias=config.mlp_bias,
             p6_num=p6_nums[nameTemplate.format(i, 'mlp', 'down_proj', 'input')],
             p8_num=p8_nums[nameTemplate.format(i, 'mlp', 'down_proj', 'input')],
-            reorder_index=reorder_index[nameTemplate.format(i, 'mlp', 'down_proj', 'input')]
         )
         self.up_proj = QLinearLayer(
             in_features=self.hidden_size, out_features=self.intermediate_size, bias=config.mlp_bias,
             p6_num=p6_nums[nameTemplate.format(i, 'mlp', 'up_proj', 'input')],
             p8_num=p8_nums[nameTemplate.format(i, 'mlp', 'up_proj', 'input')],
-            reorder_index=reorder_index[nameTemplate.format(i, 'mlp', 'up_proj', 'input')]
+            
         )
         self.act_fn = torch.nn.functional.silu
 
@@ -133,8 +131,8 @@ class QLlamaAttention(nn.Module):
         config,
         p8_nums,
         p6_nums,
-        reorder_index,
-        i
+        i,
+        reorder_index=None,
     ):
         super().__init__()
         self.config = config
@@ -153,25 +151,21 @@ class QLlamaAttention(nn.Module):
             in_features=self.hidden_size, out_features=self.hidden_size, bias=config.attention_bias,
             p8_num=p8_nums[nameTemplate.format(i, 'self_attn', 'q_proj', 'input')],
             p6_num=p6_nums[nameTemplate.format(i, 'self_attn', 'q_proj', 'input')],
-            reorder_index=reorder_index[nameTemplate.format(i, 'self_attn', 'q_proj', 'input')]
         )
         self.k_proj = QLinearLayer(
             in_features=self.hidden_size, out_features=self.hidden_size, bias=config.attention_bias,
             p8_num=p8_nums[nameTemplate.format(i, 'self_attn', 'k_proj', 'input')],
             p6_num=p6_nums[nameTemplate.format(i, 'self_attn', 'k_proj', 'input')],
-            reorder_index=reorder_index[nameTemplate.format(i, 'self_attn', 'k_proj', 'input')]
         )
         self.v_proj = QLinearLayer(
             in_features=self.hidden_size, out_features=self.hidden_size, bias=config.attention_bias,
             p8_num=p8_nums[nameTemplate.format(i, 'self_attn', 'v_proj', 'input')],
             p6_num=p6_nums[nameTemplate.format(i, 'self_attn', 'v_proj', 'input')],
-            reorder_index=reorder_index[nameTemplate.format(i, 'self_attn', 'v_proj', 'input')]
         )
         self.o_proj = QLinearLayer(
             in_features=self.hidden_size, out_features=self.hidden_size, bias=config.attention_bias,
             p8_num=p8_nums[nameTemplate.format(i, 'self_attn', 'o_proj', 'input')],
             p6_num=p6_nums[nameTemplate.format(i, 'self_attn', 'o_proj', 'input')],
-            reorder_index=reorder_index[nameTemplate.format(i, 'self_attn', 'o_proj', 'input')]
         )
    
     def forward(
@@ -236,7 +230,7 @@ class QLlamaAttention(nn.Module):
 class LlamaRMSNorm(nn.Module):
     def __init__(
         self,
-        hidden_size, eps, p8_num, p6_num, reorder_index
+        hidden_size, eps, p8_num, p6_num, reorder_index=None
     ):
         super().__init__()
         self.weight = nn.Parameter(torch.zeros(hidden_size, dtype=torch.bfloat16))
@@ -276,8 +270,8 @@ class LlamaDecoderLayer(nn.Module):
         config,
         p8_nums,
         p6_nums,
-        reorder_index,
-        layer_idx
+        layer_idx,
+        reorder_index=None,
     ):
         super().__init__()
         
@@ -300,14 +294,11 @@ class LlamaDecoderLayer(nn.Module):
         )
         self.input_layernorm = LlamaRMSNorm(
             config.hidden_size, eps=config.rms_norm_eps, p8_num=p8_nums[nameTemplate.format(layer_idx, 'self_attn', 'q_proj', 'input')],
-            p6_num=p6_nums[nameTemplate.format(layer_idx, 'self_attn', 'q_proj', 'input')],
-            reorder_index=reorder_index[nameTemplate.format(layer_idx, 'self_attn', 'q_proj', 'input')],  
-            
+            p6_num=p6_nums[nameTemplate.format(layer_idx, 'self_attn', 'q_proj', 'input')], 
         )
         self.post_attention_layernorm = LlamaRMSNorm(
             config.hidden_size, eps=config.rms_norm_eps, p8_num=p8_nums[nameTemplate.format(layer_idx, 'mlp', 'gate_proj', 'input')],
             p6_num=p6_nums[nameTemplate.format(layer_idx, 'mlp', 'gate_proj', 'input')],
-            reorder_index=reorder_index[nameTemplate.format(layer_idx, 'mlp', 'gate_proj', 'input')],
         )
 
     def forward(
@@ -369,23 +360,21 @@ class FP16LlamaRMSNorm(nn.Module):
         return self.weight * hidden_states.to(input_dtype)
 class LlamaModel(LlamaPreTrainedModel):
 
-    def __init__(self, name: str, config: LlamaConfig):
+    def __init__(self, name: str, config: LlamaConfig, layer_idx):
         super().__init__(config)
         self.padding_idx = config.pad_token_id
         self.vocab_size = config.vocab_size
         self.embed_tokens = nn.Embedding(config.vocab_size, config.hidden_size,
                                          self.padding_idx)
     
-        index_filename = f'./saved/{name}_reorder_index_wikitext2_mean.pt'
         p6_num_filename = f'./saved/{name}_p6_num_wikitext2_mean.pt'
         p8_num_filename = f'./saved/{name}_p8_num_wikitext2_mean.pt'
-        reorder_index = torch.load(index_filename, weights_only=False)
         p6_nums = torch.load(p6_num_filename, weights_only=False)
         p8_nums = torch.load(p8_num_filename, weights_only=False)
         self.layers = nn.ModuleList(
             # [LlamaDecoderLayer(config, i) for i in range(config.num_hidden_layers)])
             # [LlamaDecoderLayer(config, p8_nums, p6_nums, reorder_index, i) for i in range(config.num_hidden_layers)],)
-        [LlamaDecoderLayer(config, p8_nums, p6_nums, reorder_index, 0)]) # Hack for memory
+        [LlamaDecoderLayer(config, p8_nums, p6_nums, layer_idx)]) # Hack for memory
         self.norm = FP16LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
         
         self.cache_dtype = "float16"
@@ -444,10 +433,10 @@ class LlamaModel(LlamaPreTrainedModel):
 
 class LlamaForCausalLM(LlamaModel):
 
-    def __init__(self, name, config):
-        super().__init__(name, config)
+    def __init__(self, name, config, layer_idx):
+        super().__init__(name, config, layer_idx)
 
-        self.model = LlamaModel(name, config)
+        self.model = LlamaModel(name, config, layer_idx)
         self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=config.attention_bias, dtype=torch.bfloat16)
         self.post_init()
         self.config = config
