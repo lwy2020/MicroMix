@@ -27,7 +27,7 @@ MODEL_CFGS = {
     "qwen-2.5-7b":
         ModelConfig(
             name='qwen-2.5-7b',
-            num_layers=1,
+            num_layers=28,
             num_heads=28,
             hidden_size=3584,
             intermediate_size=18944,
@@ -37,7 +37,7 @@ MODEL_CFGS = {
     "llama-2-7b":
         ModelConfig(
             name='llama-2-7b',
-            num_layers=1,
+            num_layers=32,
             num_heads=32,
             hidden_size=4096,
             intermediate_size=11008,
@@ -47,7 +47,7 @@ MODEL_CFGS = {
     "llama-3.1-8b":
         ModelConfig(
             name='llama-3.1-8b',
-            num_layers=1,
+            num_layers=32,
             num_heads=32,
             hidden_size=4096,
             intermediate_size=14336,
@@ -57,10 +57,20 @@ MODEL_CFGS = {
     "qwen-2.5-14b":
         ModelConfig(
             name='qwen-2.5-14b',
-            num_layers=1,
+            num_layers=48,
             num_heads=40,
             hidden_size=5120,
             intermediate_size=13824,
+            attention_bias=True,
+            mlp_bias=True
+        ),
+    "qwen-2.5-32b":
+        ModelConfig(
+            name='qwen-2.5-32b',
+            num_layers=64,
+            num_heads=40,
+            hidden_size=5120,
+            intermediate_size=27648,
             attention_bias=True,
             mlp_bias=True
         ),
@@ -122,7 +132,7 @@ def _build_cache(batch_size, length, layer, disable_quant, num_key_value_heads, 
     )
 
 
-def get_model_quantized(name, model_cfg):
+def get_model_quantized(name, model_cfg, layer_idx):
     from modeling_micromix import LlamaConfig, LlamaForCausalLM
     model = LlamaForCausalLM(
         name,
@@ -131,7 +141,8 @@ def get_model_quantized(name, model_cfg):
             num_heads=model_cfg.num_heads,
             intermediate_size=model_cfg.intermediate_size,
             num_hidden_layers=model_cfg.num_layers,
-        )).to(model_cfg.device)
+        ),
+    layer_idx).to(model_cfg.device)
 
     return model
 
@@ -160,22 +171,39 @@ def run_all_for_model(layer, bsz, prefill, decode, config):
     _cleanup()
     return time_prefill, memory_prefill
 
+
+
+
 def benchmark(args):
-
-    model = get_model_quantized(args.model, MODEL_CFGS[args.model])
-    layer = model.model.layers[0]
-    del model
-    _cleanup()
-    time_prefill_i4, mem_i4 = run_all_for_model(
-        layer, args.batch_size, args.prefill_seq_len, args.decode_steps, MODEL_CFGS[args.model])
-    del layer
-    _cleanup()
-
-    print(f"Prefill Int4 time: {np.mean(time_prefill_i4):.3f} +- {1.96 * np.std(time_prefill_i4):.3f}ms")
-
-
-    print(f"Int4 memory: {np.mean(mem_i4) / (1024 * 1024 * 1024):.3f}GB +- {1.96 * np.std(mem_i4):.3f}")
+    times = []
+    memories = []
+    for i in range(MODEL_CFGS[args.model].num_layers):
+        model = get_model_quantized(args.model, MODEL_CFGS[args.model], i)
+        layer = model.model.layers[0]
+        del model
+        _cleanup()
+        time_prefill_i4, mem_i4 = run_all_for_model(
+            layer, args.batch_size, args.prefill_seq_len, args.decode_steps, MODEL_CFGS[args.model])
+        del layer
+        _cleanup()
         
+        print(f"{args.model}, DecoderLayer {i}:")
+        print(f"Prefill Int4 time: {np.mean(time_prefill_i4):.3f} +- {1.96 * np.std(time_prefill_i4):.3f}ms")
+        print(f"Int4 memory: {np.mean(mem_i4) / (1024 * 1024 * 1024):.3f}GB +- {1.96 * np.std(mem_i4):.3f}")
+        print('--------------')
+        times.append(time_prefill_i4)
+        memories.append(mem_i4)
+    print(f"{args.model}, Mean:")
+    print(f"Prefill Int4 time: {np.mean(times):.3f} +- {1.96 * np.std(times):.3f} ms")
+    print(f"Int4 memory: {np.mean(memories) / (1024 * 1024 * 1024):.3f} GB +- {1.96 * np.std(memories):.3f}")
+    print('--------------')
+    print(f"{args.model}, Min:")
+    print(f"Prefill Int4 time: {np.min(times):.3f} ms")
+    print(f"Int4 memory: {np.min(memories) / (1024 * 1024 * 1024):.3f} GB")
+    print('--------------')
+    print(f"{args.model}, Max:")
+    print(f"Prefill Int4 time: {np.max(times):.3f} ms")
+    print(f"Int4 memory: {np.max(memories) / (1024 * 1024 * 1024):.3f} GB")
     print('--------------')
 
 if __name__ == '__main__':
@@ -183,7 +211,7 @@ if __name__ == '__main__':
 
     parser.add_argument(
         '--model', type=str,
-        default='qwen-2.5-14b'
+        default='qwen-2.5-7b'
     )
     
     parser.add_argument(
