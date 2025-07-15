@@ -117,7 +117,7 @@ def assign_layers_to_gpus(layers: List[nn.Module]):
             gpus = [pre_gpu_info] + sorted(available_gpus, key=lambda x: x[2])
         mapped = False
         for gpu_id, tot_memory, allocated_memory in gpus:
-            if (tot_memory - allocated_memory * 1.35) > layer_memory:
+            if (tot_memory - allocated_memory * 1.15) > layer_memory:
                 layer_gpu_map[layer] = gpu_id
                 layer.to(f"cuda:{gpu_id}")
                 layer.device = f"cuda:{gpu_id}"
