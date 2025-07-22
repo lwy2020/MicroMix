@@ -16,7 +16,7 @@ from transformers.models.llama.modeling_llama import (ACT2FN,
 import flashinfer
 
 import sys
-sys.path.append('./kernels/MixedGemm/build/')
+sys.path.append('./kernels/mgemm/build/')
 import mixedgemm
 
 class QLinearLayer(nn.Module):

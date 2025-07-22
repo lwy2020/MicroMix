@@ -8,7 +8,7 @@ conda activate micromix
 ```
 Please make sure that [CUDA 12.8](https://developer.nvidia.com/cuda-12-8-1-download-archive?target_os=Linux&target_arch=x86_64&Distribution=Ubuntu&target_version=22.04&target_type=runfile_local) is in your environment.
 ```bash
-git clone https://github.com/lwy0000/MircoMix.git
+git clone --recurse-submodules https://github.com/lwy0000/MircoMix.git
 cd MicroMix
 pip install -r requirements.txt
 ```
@@ -22,9 +22,9 @@ python reorder_indices.py --model /PATH/TO/YOUR/MODEL/ --samples 32 --seqlen 204
 ```
 Results are saved in ./saved/
 ### 2.2 Building Kernels
-Please refer to `kernels/MixedGemm/README.md`
+Please refer to `kernels/mgemm/README.md`
 ```bash
-cd kernels/MixedGemm/
+cd kernels/mgemm/
 ```
 ### 2.3 Accuracy Evaluation
 ```bash
