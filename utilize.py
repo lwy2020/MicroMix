@@ -258,9 +258,9 @@ def search_p4_p6_proportions(model, dataloader, device_, seqlen, reorder_index, 
             keys = keys.reshape(-1, keys.shape[-1]).contiguous()
             seqlen, in_features = keys.shape 
        
-            p4_threshold = keys.max(dim=-1, keepdim=True)[0] * math.pow(2, 1) / 254 * 8 / 6 *2
+            p4_threshold = keys.max(dim=-1, keepdim=True)[0] * math.pow(2, 1) / 254 * 8 / 6 
             # p6_threshold = keys.max(dim=-1, keepdim=True)[0] * math.pow(2, 1) / 254 * 32 / 7.5  #E2M3
-            p6_threshold = keys.max(dim=-1, keepdim=True)[0] * math.pow(2, 3) / 254 * 32 / 28 *2   #E3M2
+            p6_threshold = keys.max(dim=-1, keepdim=True)[0] * math.pow(2, 3) / 254 * 32 / 28   #E3M2
      
             p4_ratio = (keys < p4_threshold).sum() / keys.numel()
             p6_ratio = (keys < p6_threshold).sum() / keys.numel() - p4_ratio
