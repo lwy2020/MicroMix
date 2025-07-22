@@ -1,6 +1,3 @@
-[submodule "MixedGemm"]
-	path = MixedGemm
-	url = https://github.com/actypedef/MixedGemm.git
 [submodule "cutlass"]
 	path = cutlass
 	url = https://github.com/NVIDIA/cutlass.git
