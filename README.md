@@ -21,7 +21,12 @@ Reorder_indices, p6_num, p8_num are needed for quantization:
 python reorder_indices.py --model /PATH/TO/YOUR/MODEL/ --samples 32 --seqlen 2048 --act_sort_metric mean
 ```
 Results are saved in ./saved/
-### 2.2 Accuracy Evaluation
+### 2.2 Building Kernels
+Please refer to `kernels/MixedGemm/README.md`
+```bash
+cd kernels/MixedGemm/
+```
+### 2.3 Accuracy Evaluation
 ```bash
 bash run_micromix.sh /PATH/TO/YOUR/MODEL/
 ```
@@ -36,7 +41,12 @@ python -m pip install -v .
 ```
 DecoderLayer efficiency:
 ```bash
-python benchmarks/benchmarks_layer_micromix.py --model 'llama-3.1-8b' --batch_size 32 --prefill_seq_len 2048
+python benchmarks/benchmark_layer_micromix.py --model 'llama-3.1-8b' --batch_size 32 --prefill_seq_len 2048
+```
+TensorRT efficiency:
+```bash
+pip install tensorrt
+python kernels/benchmark/trt-fp8-prefill-llama.py
 ```
 
 ## Acknowledagement
