@@ -6,7 +6,7 @@ from transformers.models.llama.modeling_llama import LlamaDecoderLayer, LlamaRMS
 from qLinearLayer import QLinearLayer
 
 import sys
-sys.path.append('./MixedGemm/build/')
+sys.path.append('./mgemm/build/')
 import mixedgemm
 
 @torch.no_grad()
