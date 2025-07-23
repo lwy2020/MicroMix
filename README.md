@@ -24,7 +24,7 @@ Results are saved in ./saved/
 ### 2.2 Building Kernels
 Please refer to `kernels/mgemm/README.md`
 ```bash
-cd kernels/mgemm/
+cd mgemm/
 ```
 ### 2.3 Accuracy Evaluation
 ```bash
