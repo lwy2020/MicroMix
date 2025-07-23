@@ -24,16 +24,6 @@ class ModelConfig:
     device: str = dataclasses.field(default="cuda:0")
     
 MODEL_CFGS = {
-    "qwen-2.5-7b":
-        ModelConfig(
-            name='qwen-2.5-7b',
-            num_layers=28,
-            num_heads=28,
-            hidden_size=3584,
-            intermediate_size=18944,
-            attention_bias=True,
-            mlp_bias=True
-        ),
     "llama-2-7b":
         ModelConfig(
             name='llama-2-7b',
@@ -53,26 +43,6 @@ MODEL_CFGS = {
             intermediate_size=14336,
             attention_bias=False,
             mlp_bias=False
-        ),
-    "qwen-2.5-14b":
-        ModelConfig(
-            name='qwen-2.5-14b',
-            num_layers=48,
-            num_heads=40,
-            hidden_size=5120,
-            intermediate_size=13824,
-            attention_bias=False,
-            mlp_bias=False
-        ),
-    "qwen-2.5-32b":
-        ModelConfig(
-            name='qwen-2.5-32b',
-            num_layers=64,
-            num_heads=40,
-            hidden_size=5120,
-            intermediate_size=27648,
-            attention_bias=True,
-            mlp_bias=True
         ),
 }
 
