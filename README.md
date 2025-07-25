@@ -48,7 +48,7 @@ python benchmarks/benchmark_layer_micromix.py --model 'llama-3.1-8b' --batch_siz
 TensorRT efficiency:
 ```bash
 pip install tensorrt
-python benchmark/trt-fp8-prefill-llama.py
+python benchmarks/trt-fp8-prefill-llama.py
 ```
 
 ## Acknowledagement
