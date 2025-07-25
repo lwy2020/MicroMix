@@ -32,7 +32,7 @@ cd mgemm/
 ```bash
 bash run_micromix.sh /PATH/TO/YOUR/MODEL/
 ```
-If you want to use the MicroMix kernel but not our algorithm, you can directly set p4_num, p6_num, p8_num (line 41-43 in /model/qLinearLayer.py) as the number you want 😄
+If you want to use the MicroMix kernel but not our algorithm, you can directly set p4_num, p6_num, p8_num (line 41-43 in /model/qLinearLayer.py) as the numbers you want 😄
 
 ## 3. Efficiency Evaluation
 Since [FlashInfer](https://github.com/flashinfer-ai/flashinfer/tree/main) is integrated into our decoderlayer implementation, please install FlashInfer:
