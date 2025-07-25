@@ -22,9 +22,9 @@ Reorder_indices, p6_num, p8_num are needed for quantization:
 ```bash
 python reorder_indices.py --model /PATH/TO/YOUR/MODEL/ --samples 32 --seqlen 2048 --act_sort_metric mean
 ```
-Results are saved in ./saved/
+Results are saved in saved/
 ### 2.2 Building Kernels
-Please refer to `kernels/mgemm/README.md`
+Please refer to `mgemm/README.md`
 ```bash
 cd mgemm/
 ```
