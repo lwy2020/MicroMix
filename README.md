@@ -1,7 +1,7 @@
 # MicroMix
 MicroMix is a mixed-precision quantization method using MXFP8/MXFP6/MXFP4.
 
-![](./figures/microix.png)
+![](/figures/main.png)
 
 ## 1. Installation
 ```bash
