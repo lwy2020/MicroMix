@@ -11,7 +11,7 @@ python ${dir}/model/main.py ${MODEL} \
         --tasks piqa,arc_challenge,boolq,winogrande,lambada_openai \
         --lm_eval_num_fewshot 0 \
         --lm_eval_limit -1\
-        --multigpu\
+
 
 #5-shot mmlu
 python ${dir}/model/main.py ${MODEL}\
@@ -19,11 +19,11 @@ python ${dir}/model/main.py ${MODEL}\
         --tasks mmlu\
         --lm_eval_num_fewshot 5\
         --lm_eval_limit -1\
-        --multigpu\
+
 
 # # wikitext2 ppl
 python ${dir}/model/main.py ${MODEL}\
         --act_sort_metric mean\
         --lm_eval_limit -1\
         --eval_ppl\
-        --multigpu\
+
