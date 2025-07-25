@@ -153,7 +153,7 @@ if __name__ == '__main__':
                 dataset, seed=args.seed, model=args.model, seqlen=2048
             )
             print(f"Evaluating {dataset} ...")
-            ppl = eval_ppl(lm.model, testloader, lm.model.model.layers[0].device)
+            ppl = eval_ppl(lm.model, testloader, 'cuda')
 
             print(f"Result,{dataset},{ppl:.3f}")
 
