@@ -1,6 +1,8 @@
 # MicroMix
 MicroMix is a mixed-precision quantization method using MXFP8/MXFP6/MXFP4.
 
+![](./figures/microix.png)
+
 ## 1. Installation
 ```bash
 conda create -n micromix python=3.10 -y

@@ -85,7 +85,7 @@ if __name__ == '__main__':
     
     args = parser.parse_args()
 
-    model_name = args.model.lower().split('/')[-2]
+    model_name = args.model.split('/')[-2]
     assert model_name != None, "Please check the model path."
 
     if "llama" in args.model.lower():
