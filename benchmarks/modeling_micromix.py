@@ -390,39 +390,6 @@ class LlamaModel(LlamaPreTrainedModel):
         torch.cuda.nvtx.range_pop()
         hidden_states = hidden_states.to(torch.bfloat16)
         bsz, q_len, _ = hidden_states.shape
-        
-        if past_key_value is None:
-            # 初始化 KV Cache 张量（仅在第一次调用时）
-            device = hidden_states.device
-            seqlens = [q_len] * bsz
-            # total_pages = int(256000 / self.page_len)
-            total_pages = math.ceil(bsz * q_len / self.page_len) 
-            layer_buf = torch.empty(
-            (total_pages, 2, self.page_len, self.config.num_heads, self.head_dim),
-            dtype=torch.bfloat16,
-            device="cuda"
-            )
-            kv_indices_host = []
-            kv_indptr_host = [0]
-            next_page_id = 0
-            for seqlen in seqlens:
-                npages = (seqlen + self.page_len - 1) // self.page_len
-                kv_indices_host.extend(range(next_page_id, next_page_id + npages))
-                next_page_id += npages
-                kv_indptr_host.append(len(kv_indices_host))
-            kv_indices = torch.tensor(kv_indices_host, device=device, dtype=torch.int32)
-            kv_indptr = torch.tensor(kv_indptr_host, device=device, dtype=torch.int32)
-            # kv_indices = torch.arange(total_pages, dtype=torch.int32, device=hidden_states.device)
-            # kv_indptr = torch.tensor([0, 1], dtype=torch.int32, device=hidden_states.device)
-            kv_last_page_len = torch.tensor([(seqlen - 1) % self.page_len + 1 for seqlen in seqlens], dtype=torch.int32, device=hidden_states.device)
-            past_key_value = [
-                {
-                "layer_buf": layer_buf,
-                "kv_indices": kv_indices,
-                "kv_indptr": kv_indptr,
-                "kv_last_page_len": kv_last_page_len,
-                # "next_page_id": i,
-            } for i in range(self.config.num_hidden_layers)]
     
         for layer_idx, decoder_layer in enumerate(self.layers):
             torch.cuda.nvtx.range_push(f"layer={layer_idx}")
