@@ -1,15 +1,31 @@
 cmake_minimum_required(VERSION 3.18)
 project(MixedGemm LANGUAGES CXX CUDA)
 
-set(CMAKE_PREFIX_PATH "/home/actypedef/miniconda3/envs/mhq/lib/python3.12/site-packages/torch")
+find_package(Python3 REQUIRED COMPONENTS Interpreter Development)
+
+# 执行 Python 脚本来获取 Torch 的 CMAKE 前缀路径
+execute_process(
+  COMMAND "${Python3_EXECUTABLE}" -c "import torch; print(torch.utils.cmake_prefix_path)"
+  OUTPUT_VARIABLE TORCH_CMAKE_PREFIX_PATH
+  OUTPUT_STRIP_TRAILING_WHITESPACE
+  RESULT_VARIABLE _torch_found
+)
+
+if(NOT _torch_found EQUAL 0)
+  message(FATAL_ERROR "PyTorch not found. Please make sure 'import torch' works in your Python environment.")
+else()
+  # 将找到的路径添加到 CMAKE_PREFIX_PATH 的最前面
+  list(INSERT CMAKE_PREFIX_PATH 0 "${TORCH_CMAKE_PREFIX_PATH}")
+  message(STATUS "Found PyTorch CMAKE_PREFIX_PATH: ${TORCH_CMAKE_PREFIX_PATH}")
+endif()
+set(CMAKE_PREFIX_PATH ${TORCH_CMAKE_PREFIX_PATH}/../../)
 find_package(Torch REQUIRED)
 
 # 查找 CUDA Toolkit
 find_package(CUDAToolkit REQUIRED)
-find_package(Python3 REQUIRED COMPONENTS Development)
 include_directories(${Python3_INCLUDE_DIRS})
 find_package(pybind11 CONFIG REQUIRED)
-find_library(TORCH_PYTHON_LIBRARY torch_python PATHS /home/actypedef/miniconda3/envs/mhq/lib/python3.12/site-packages/torch/lib NO_DEFAULT_PATH)
+find_library(TORCH_PYTHON_LIBRARY torch_python PATHS ${TORCH_CMAKE_PREFIX_PATH}/../../lib/ NO_DEFAULT_PATH)
 
 # 设置 CUTLASS 根目录
 set(CUTLASS_ROOT ../cutlass)
