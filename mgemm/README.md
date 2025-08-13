@@ -16,12 +16,9 @@ conda activate micromix
 conda install pybind11
 pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
 ```
-2. Replace following paths in CMakeLists.txt with your actual paths
-```
-CMAKE_PREFIX_PATH
-torch_python PATHS
-```
-3. Make
+
+
+2. Make
 ```
 bash make.sh
 ```
