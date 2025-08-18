@@ -1,6 +1,3 @@
-# Adapted from HuggingFace Transformers Library
-# https://github.com/huggingface/transformers/blob/17a55534f5e5df10ac4804d4270bf6b8cc24998d/src/transformers/models/llama/modeling_llama.py
-
 import math
 from typing import Tuple
 
@@ -354,6 +351,7 @@ class FP16LlamaRMSNorm(nn.Module):
         variance = hidden_states.pow(2).mean(-1, keepdim=True)
         hidden_states = hidden_states * torch.rsqrt(variance + self.variance_epsilon)
         return self.weight * hidden_states.to(input_dtype)
+        
 class LlamaModel(LlamaPreTrainedModel):
 
     def __init__(self, name: str, config: LlamaConfig, layer_idx=None):
