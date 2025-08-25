@@ -12,6 +12,7 @@ Please make sure that [CUDA 12.8](https://developer.nvidia.com/cuda-12-8-1-downl
 ```bash
 git clone --recurse-submodules https://github.com/lwy2020/MicroMix.git
 cd MicroMix
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
 pip install -r requirements.txt
 ```
 
