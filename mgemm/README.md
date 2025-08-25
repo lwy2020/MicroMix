@@ -12,9 +12,7 @@ sudo apt-get install python3-dev
 sudo apt update
 sudo apt install cmake
 
-conda activate micromix
 conda install pybind11
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
 ```
 
 
