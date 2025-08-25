@@ -397,7 +397,7 @@ class QQwen2MLP(nn.Module):
         if _ > 25000:
             AN, AS, AO, SFAN, SFAS, SFAO = mixedgemm.downproj_quantize_w(torch.index_select(tmpResult, 1, self.down_reorder_index.to(torch.int32)), self.down_proj.p4_num, self.down_proj.p6_num, self.down_proj.p8_num)
         else: 
-            AN, AS, AO, SFAN, SFAS, SFAO = mixedgemm.reorder_quantize_x(x, self.down_reorder_index, self.down_proj.p4_num, self.down_proj.p6_num, self.down_proj.p8_num)
+            AN, AS, AO, SFAN, SFAS, SFAO = mixedgemm.reorder_quantize_x(tmpResult, self.down_reorder_index, self.down_proj.p4_num, self.down_proj.p6_num, self.down_proj.p8_num)
         torch.cuda.synchronize()
         tmpResult = (AN, AS, AO, SFAN, SFAS, SFAO, bsz, q_len)
        
