@@ -10,7 +10,7 @@ conda activate micromix
 ```
 Please make sure that [CUDA 12.8](https://developer.nvidia.com/cuda-12-8-1-download-archive?target_os=Linux&target_arch=x86_64&Distribution=Ubuntu&target_version=22.04&target_type=runfile_local) is in your environment.
 ```bash
-git clone --recurse-submodules https://github.com/lwy0000/MicroMix.git
+git clone --recurse-submodules https://github.com/lwy2020/MicroMix.git
 cd MicroMix
 pip install -r requirements.txt
 ```
