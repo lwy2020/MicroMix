@@ -270,7 +270,7 @@ def search_p4_p6_proportions(model, dataloader, device_, seqlen, reorder_index, 
             p4_num = in_features - p8_num - p6_num
             average_bits[name] = 4 * p4_ratio + 6 * p6_ratio + 8 * p8_ratio
             
-            print(f'p4_num is {p4_ratio}, p6_num is {p6_ratio}, p8_num is {p8_ratio}, avg:{average_bits[name]}')
+            print(f'p4_ratio is {p4_ratio}, p6_ratio is {p6_ratio}, p8_ratio is {p8_ratio}, avg:{average_bits[name]}')
             p6_nums[name] = p6_num
             p8_nums[name] = p8_num
 
