@@ -406,8 +406,7 @@ class LlamaForCausalLM(LlamaModel):
 
     def __init__(self, name, config, layer_idx=None):
         super().__init__(name, config, layer_idx)
-
-        self.model = LlamaModel(name, config, layer_idx)
+        
         self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=config.attention_bias, dtype=torch.bfloat16)
         self.post_init()
         self.config = config
@@ -417,12 +416,12 @@ class LlamaForCausalLM(LlamaModel):
         past_key_value=None
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         torch.cuda.nvtx.range_push("LlamaForCausalLM")
-        hidden_states, past_key_value = self.model(input_ids, past_key_value)
+        hidden_states, past_key_value = super().forward(
+            input_ids, 
+            past_key_value,
+        )        
         torch.cuda.nvtx.range_push("lm_head")
         
         logits = self.lm_head(hidden_states.to(torch.bfloat16))
         torch.cuda.nvtx.range_pop()
         torch.cuda.nvtx.range_pop()
-        # return CausalLMOutputWithPast(
-        #     past_key_value=past_key_value,
-        # )
