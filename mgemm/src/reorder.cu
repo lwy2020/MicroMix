@@ -220,10 +220,10 @@ __global__ void reorder_bf16_mixed_kernel(
   PackFp4* input_frag_fp4 = reinterpret_cast<PackFp4*>(input_frag);
   for(int i = 0; i < elements_per_thread; i += 4){
     bf16_t result_0, result_1, result_2, result_3;
-    result_0 = converterScale(clamp((round((float)input_frag[i + 0] * r_scale)), lower_bound, upper_bound));
-    result_1 = converterScale(clamp((round((float)input_frag[i + 1] * r_scale)), lower_bound, upper_bound));
-    result_2 = converterScale(clamp((round((float)input_frag[i + 2] * r_scale)), lower_bound, upper_bound));
-    result_3 = converterScale(clamp((round((float)input_frag[i + 3] * r_scale)), lower_bound, upper_bound));
+    result_0 = converterScale(clamp(((float)input_frag[i + 0] * r_scale), lower_bound, upper_bound));
+    result_1 = converterScale(clamp(((float)input_frag[i + 1] * r_scale), lower_bound, upper_bound));
+    result_2 = converterScale(clamp(((float)input_frag[i + 2] * r_scale), lower_bound, upper_bound));
+    result_3 = converterScale(clamp(((float)input_frag[i + 3] * r_scale), lower_bound, upper_bound));
     if(tid >= bdx - GROUP_NUM(KO)){
       input_frag_fp8[i + 0] = converterO(result_0);
       input_frag_fp8[i + 1] = converterO(result_1);
@@ -398,8 +398,8 @@ __global__ void reorder_bf16_fp4_kernel(
   
   for(int i = 0; i < elements_per_thread; i += 2){
     bf16_t result_0, result_1;
-    result_0 = converterScale(clamp(round(input_frag[i] * r_scale), lower_bound, upper_bound));
-    result_1 = converterScale(clamp(round(input_frag[i + 1] * r_scale), lower_bound, upper_bound));
+    result_0 = converterScale(clamp(input_frag[i] * r_scale, lower_bound, upper_bound));
+    result_1 = converterScale(clamp(input_frag[i + 1] * r_scale, lower_bound, upper_bound));
     if(tid >= bdx - GROUP_NUM(KO)){
       input_frag_fp8[i / 2].low = converterN(result_0).storage;
       input_frag_fp8[i / 2].high = converterN(result_1).storage;
