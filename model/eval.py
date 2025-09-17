@@ -15,7 +15,7 @@ def eval_ppl(model, testenc, dev):
     testenc = testenc.input_ids
     nsamples = testenc.numel() // 2048
     layers = model.model.layers
-
+    model.cpu()
     model.model.embed_tokens = model.model.embed_tokens.to(dev)
     layers[0] = layers[0].to(dev)
 
