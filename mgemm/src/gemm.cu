@@ -43,7 +43,7 @@ void matmul_host(
         const ElementBOutlier::ScaleFactorType *SFBO
 )
 {
-    matmul_host4(AN, BN, M, N, KN, C, D, SFAN, SFBN);
-    matmul_host6(AS, BS, M, N, KS, D, D, SFAS, SFBS);
-    matmul_host8(AO, BO, M, N, KO, D, D, SFAO, SFBO);
+    if(KN!=0)matmul_host4(AN, BN, M, N, KN, C, D, SFAN, SFBN);
+    if(KS!=0)matmul_host6(AS, BS, M, N, KS, D, D, SFAS, SFBS);
+    if(KO!=0)matmul_host8(AO, BO, M, N, KO, D, D, SFAO, SFBO);
 }
