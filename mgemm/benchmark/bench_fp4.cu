@@ -109,8 +109,11 @@ int main() {
     for (int it = 0; it < 200; it ++) {
         matmul_host4(A_d, B_d, M, N, K, C_d, D_d, SFA_d, SFB_d);
     }
+    
+    // timed runs
+    const int timed_iters = 400;
     CHECK_CUDA(cudaEventRecord(start));
-    for (int it = 0; it < 400; it ++) {
+    for (int it = 0; it < timed_iters; it ++) {
         matmul_host4(A_d, B_d, M, N, K, C_d, D_d, SFA_d, SFB_d);
     }
     CHECK_CUDA(cudaEventRecord(stop));
@@ -118,6 +121,19 @@ int main() {
     float milliseconds = 0;
     CHECK_CUDA(cudaEventElapsedTime(&milliseconds, start, stop));
     cudaMemcpy(D, D_d, M * N * sizeof(ElementD), cudaMemcpyDeviceToHost);
+    
+    double time_sec = static_cast<double>(milliseconds) / 1000.0;
+    
+    double flops_per_gemm = 2.0 * static_cast<double>(M) * static_cast<double>(N) * static_cast<double>(K);
+    double total_flops = flops_per_gemm * static_cast<double>(timed_iters);
+    double gflops = total_flops / (time_sec * 1.0e9);
+    double tflops = total_flops / (time_sec * 1.0e12);
+
+    std::printf("GEMM average time per run: %.3f ms\n", milliseconds / timed_iters);
+    std::printf("Total runs: %d, problem size M=%d N=%d K=%d\n", timed_iters, M, N, K);
+    std::printf("FLOPs per run: %.0f\n", flops_per_gemm);
+    std::printf("Total FLOPs (all runs): %.0f\n", total_flops);
+    std::printf("Achieved performance: %.3f TFLOPS\n", tflops);
 
     std::printf("GEMM completed in %.3f ms\n", milliseconds / 400);
     std::cout << "mxfp4 gemm finished." << std::endl;

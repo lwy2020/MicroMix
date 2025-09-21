@@ -1,5 +1,2 @@
-rm -rf build/
-mkdir build && cd build
-cmake ..
-make > build.log 2>&1
-
+cmake -B build -S .
+cmake --build build -j 32
