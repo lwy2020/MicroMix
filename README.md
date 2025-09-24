@@ -50,7 +50,18 @@ INT8 efficiency:
 pip install bitsandbytes==0.47.0
 python benchmarks/benchmark_e2e_int8.py --model /PATH/TO/YOUR_MODEL --batch_size 12 --prefill_seq_len 2048
 ```
-
+## Citation
+If you found this work helpful, please consider citing:
+```bibtex
+@misc{liu2025micromix,
+    title={MicroMix: Efficient Mixed-Precision Quantization with Microscaling Formats for Large Language Models},
+    author={Wenyuan Liu and Haoqian Meng and Yilun Luo and Peng Zhang and Xindian Ma},
+    year={2025},
+    eprint={2508.02343},
+    archivePrefix={arXiv},
+    primaryClass={cs.LG}
+}
+```
 
 ## Acknowledagement
 Our code is built on the following repos, thank you for your contributions to community 👍:
