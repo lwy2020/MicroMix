@@ -36,34 +36,21 @@ bash run_micromix.sh /PATH/TO/YOUR/MODEL/
 If you want to use the MicroMix kernel but not our algorithm, you can directly set p4_num, p6_num, p8_num (line 41-43 in /model/qLinearLayer.py) as the numbers you want 😄
 
 ## 3. Efficiency Evaluation
-Since [FlashInfer](https://github.com/flashinfer-ai/flashinfer/tree/main) is integrated into our decoderlayer implementation, please install FlashInfer:
+MicroMix efficiency:
 ```bash
-git clone --recurse-submodules https://github.com/flashinfer-ai/flashinfer.git
-cd flashinfer
-python -m pip install -v .
+python benchmarks/benchmark_e2e_micromix.py --model 'llama-3.1-8b' --batch_size 8 --prefill_seq_len 2048
 ```
-DecoderLayer efficiency:
+FP16 efficiency:
 ```bash
-python benchmarks/benchmark_layer_micromix.py --model 'llama-3.1-8b' --batch_size 32 --prefill_seq_len 2048
+pip install transformers==4.56.2
+python benchmarks/benchmark_e2e_fp16.py --model /PATH/TO/YOUR_MODEL --batch_size 8 --prefill_seq_len 2048
 ```
-TensorRT efficiency:
+INT8 efficiency:
 ```bash
-pip install tensorrt
-python benchmarks/trt-fp8-prefill-llama.py
+pip install bitsandbytes==0.47.0
+python benchmarks/benchmark_e2e_int8.py --model /PATH/TO/YOUR_MODEL --batch_size 12 --prefill_seq_len 2048
 ```
 
-## Citation
-If you found this work helpful, please consider citing:
-```bibtex
-@misc{liu2025micromix,
-    title={MicroMix: Efficient Mixed-Precision Quantization with Microscaling Formats for Large Language Models},
-    author={Wenyuan Liu and Haoqian Meng and Yilun Luo and Peng Zhang and Xindian Ma},
-    year={2025},
-    eprint={2508.02343},
-    archivePrefix={arXiv},
-    primaryClass={cs.LG}
-}
-```
 
 ## Acknowledagement
 Our code is built on the following repos, thank you for your contributions to community 👍:

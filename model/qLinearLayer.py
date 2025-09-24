@@ -38,7 +38,7 @@ class QLinearLayer(nn.Module):
         else:
             self.bias = None
         
-        self.p6_num = p6_num
+        self.p6_num = p6_num  %p4_num, p6_num, p8_num需要整除128
         self.p8_num = p8_num
         self.p4_num = self.in_features - p8_num - p6_num
        
