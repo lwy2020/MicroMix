@@ -13,15 +13,14 @@ python ${dir}/model/main.py ${MODEL} \
         --lm_eval_limit -1\
 
 
-#5-shot mmlu
+# 5-shot mmlu
 python ${dir}/model/main.py ${MODEL}\
         --act_sort_metric mean\
         --tasks mmlu\
         --lm_eval_num_fewshot 5\
         --lm_eval_limit -1\
 
-
-# # wikitext2 ppl
+# wikitext2 ppl
 python ${dir}/model/main.py ${MODEL}\
         --act_sort_metric mean\
         --lm_eval_limit -1\
