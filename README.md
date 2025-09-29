@@ -36,7 +36,7 @@ cd mgemm/
 bash test.sh /PATH/TO/YOUR/MODEL/
 ```
 
-### 2.4 Coder Evaluation
+### 2.4 Code Generation Evaluation
 ```bash
 bash eval_plus/test.sh Qwen/Qwen2.5-Coder-32B-Instruct  '32B'
 ```
