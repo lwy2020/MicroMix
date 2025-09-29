@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
-import sys
-sys.path.append('./mgemm/build/')
+
 import mixedgemm
 
 import math
