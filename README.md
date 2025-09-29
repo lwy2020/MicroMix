@@ -1,7 +1,7 @@
 # MicroMix
 MicroMix is a mixed-precision quantization method using MXFP8/MXFP6/MXFP4. 
 
-[[paper]](https://arxiv.org/abs/2508.02343)
+
 
 ![](/figures/main.png)
 
