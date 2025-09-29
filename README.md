@@ -31,10 +31,16 @@ Please refer to `mgemm/README.md`
 ```bash
 cd mgemm/
 ```
-### 2.3 Accuracy Evaluation
+### 2.3 Zero-shot, Few-shot Accuracy and Perplexity Evaluation
 ```bash
 bash test.sh /PATH/TO/YOUR/MODEL/
 ```
+
+### 2.4 Coder Evaluation
+```bash
+bash eval_plus/test.sh Qwen/Qwen2.5-Coder-32B-Instruct  '32B'
+```
+
 If you want to use the MicroMix kernel but not our algorithm, you can directly set p4_num, p6_num, p8_num (line 41-43 in /model/qLinearLayer.py) as the numbers you want 😄
 
 ## 3. Efficiency Evaluation
