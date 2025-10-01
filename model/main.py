@@ -12,6 +12,9 @@ from lm_eval.tasks import TaskManager
 from lm_eval.utils import make_table
 from lm_eval.models.huggingface import HFLM
 
+import os
+import logging
+from datetime import datetime
 
 def get_llama(model):
     import torch
@@ -94,7 +97,7 @@ if __name__ == '__main__':
        
     model.eval()
 
-    import os
+    
   
     index_filename = f'./saved/{model_name}_reorder_index_wikitext2_{args.act_sort_metric}.pt'
     p6_num_filename = f'./saved/{model_name}_p6_num_wikitext2_{args.act_sort_metric}.pt'
@@ -165,8 +168,7 @@ if __name__ == '__main__':
 
         table_results = make_table(results)
         print(table_results)
-        import logging
-        from datetime import datetime
+        
         os.makedirs("./results", exist_ok=True)
         log_filename = f"./results/log_{model_name}_{args.tasks}_{datetime.now().strftime('%Y%m%d')}.log"
         logging.basicConfig(
