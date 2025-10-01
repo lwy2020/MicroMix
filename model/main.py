@@ -167,7 +167,7 @@ if __name__ == '__main__':
         print(table_results)
         import logging
         from datetime import datetime
-
+        os.makedirs("./results", exist_ok=True)
         log_filename = f"./results/log_{model_name}_{args.tasks}_{datetime.now().strftime('%Y%m%d')}.log"
         logging.basicConfig(
                             filename=log_filename,
