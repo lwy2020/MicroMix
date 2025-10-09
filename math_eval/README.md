@@ -12,7 +12,7 @@ pip install transformers==4.44
 You can evaluate Qwen2.5/Qwen2-Math-Instruct series model with the following command:
 ```bash
 # Qwen2.5-Math-Instruct Series
-MODEL_NAME_OR_PATH="Qwen/Qwen2.5-Math-1.5B-Instruct"
+MODEL_NAME_OR_PATH="Qwen/Qwen2.5-Math-32B-Instruct"
 bash sh/eval.sh $MODEL_NAME_OR_PATH
 ```
 
