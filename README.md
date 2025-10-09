@@ -57,7 +57,7 @@ python benchmarks/benchmark_e2e_int8.py --model /PATH/TO/YOUR_MODEL --batch_size
 ```
 
 ## Citation
-```bash
+```
 @misc{liu2025micromixefficientmixedprecisionquantization,
       title={MicroMix: Efficient Mixed-Precision Quantization with Microscaling Formats for Large Language Models}, 
       author={Wenyuan Liu and Haoqian Meng and Yilun Luo and Peng Zhang and Xindian Ma},
