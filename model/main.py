@@ -6,7 +6,6 @@ from parallel_utils import map_layers_to_multi_gpus
 from datautils import get_loaders
 from eval import *
 
-from lm_eval import tasks as lm_tasks
 from lm_eval import evaluator as lm_evaluator
 from lm_eval.tasks import TaskManager
 from lm_eval.utils import make_table
@@ -155,7 +154,6 @@ if __name__ == '__main__':
     
             
     if args.tasks is not None:
-        task_manager = TaskManager()
         task_names = args.tasks.split(',')
 
         results = lm_evaluator.simple_evaluate(
