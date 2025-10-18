@@ -43,9 +43,9 @@
     } while (0)
 
 
-void matmul_host6(
-        const cutlass::float_e3m2_t *A,
-        const cutlass::float_e3m2_t *B,
+void matmul_host_w4a4(
+        const cutlass::float_e2m1_t *A,
+        const cutlass::float_e2m1_t *B,
         int M,
         int N,
         int K,

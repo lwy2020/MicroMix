@@ -1,4 +1,4 @@
-#include "fp8.h"
+#include "w8a8.h"
 
 using namespace cute;
 
@@ -32,7 +32,7 @@ using OperatorClass       = cutlass::arch::OpClassBlockScaledTensorOp;      // O
 using ThreadBlockShape    = Shape<_128,_128,_128>;                          // Threadblock's tile size
 using ClusterShape        = Shape<_1,_1,_1>;                                // Shape of the threadblocks in a cluster
 
-void matmul_host8(
+void matmul_host_w8a8(
         const ElementA::DataType *A,
         const ElementB::DataType *B,
         int M,
