@@ -20,7 +20,7 @@ else()
 endif()
 set(CMAKE_PREFIX_PATH ${TORCH_CMAKE_PREFIX_PATH}/../../)
 find_package(Torch REQUIRED)
-
+set(TORCH_CUDA_ARCHITECTURES "")
 # 查找 CUDA Toolkit
 find_package(CUDAToolkit REQUIRED)
 include_directories(${Python3_INCLUDE_DIRS})
@@ -29,6 +29,11 @@ find_library(TORCH_PYTHON_LIBRARY torch_python PATHS ${TORCH_CMAKE_PREFIX_PATH}/
 
 # 设置 CUTLASS 根目录
 set(CUTLASS_ROOT ../cutlass)
+
+# Remove sm_120 compile option
+#message(STATUS "CMAKE_CUDA_FLAGS before cleanup: ${CMAKE_CUDA_FLAGS}")
+string(REPLACE "-gencode arch=compute_120,code=sm_120" "" CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS}")
+#message(STATUS "CMAKE_CUDA_FLAGS after cleanup: ${CMAKE_CUDA_FLAGS}")
 
 # 包含 CUTLASS 头文件
 include_directories(./include)
@@ -70,3 +75,8 @@ target_compile_definitions(mixedgemm PRIVATE CUTLASS_ARCH_SM120_SUPPORTED)
 set_property(TARGET mixedgemm PROPERTY CXX_STANDARD 17)
 set_target_properties(mixedgemm PROPERTIES PREFIX "")
 add_definitions(-DTORCH_EXTENSION_NAME=mixedgemm)
+
+
+add_executable(bench_mxf4f6f8 benchmark/mxf4f6f8_bench.cu)
+target_compile_options(bench_mxf4f6f8 PRIVATE -Xptxas=-v -lineinfo -w -O3)
+target_link_libraries(bench_mxf4f6f8 gemm_objs)
