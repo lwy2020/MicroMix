@@ -32,6 +32,7 @@
 #include "cutlass/util/reference/host/tensor_compare.h"
 
 #include "helper.h"
+#include "sm120_sf_layout.h"
 
 typedef cutlass::float_e2m1_t fp4_t;
 typedef cutlass::float_e3m2_t fp6_t;
