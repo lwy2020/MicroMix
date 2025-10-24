@@ -4,9 +4,9 @@ import torch
 import time
 import mixedgemm  
 for i in range(1):
-    M, N, K = 128, 4096, 4096
+    M, N, K = 128, 3584, 11008
     group = 32
-    KN, KS, KO = 4096 - 1024, 0, 1024
+    KN, KS, KO = K-1024, 1024-128, 128
 
     torch.manual_seed(721)
 
@@ -24,18 +24,22 @@ for i in range(1):
 
     reorder_index = torch.arange(K, dtype=torch.int16, device='cuda') 
 
-    # KN, KS, KO = 4096, 0, 0
+    KN, KS, KO = 0, 0, 11008
 
     WT = W.t().clone()
     AN, AS, AO, SFAN, SFAS, SFAO = mixedgemm.reorder_quantize_x(X, reorder_index, KN, KS, KO)
+    torch.cuda.synchronize()
     
     # BN, BS, BO, SFBN, SFBS, SFBO = mixedgemm.reorder_quantize_w(W, reorder_index, KN, KS, KO)
     BN, BS, BO, SFBN, SFBS, SFBO = mixedgemm.reorder_quantize_w4(W, reorder_index, KN, KS, KO)
+    torch.cuda.synchronize()
 
 
     C = mixedgemm.matmul(AN, BN, AS, BS, AO, BO, SFAN, SFBN, SFAS, SFBS, SFAO, SFBO)
+    torch.cuda.synchronize()
 
     D = torch.matmul(X.to(torch.float32), WT.to(torch.float32))
+    torch.cuda.synchronize()
 
 
     mean_value = torch.mean(C)

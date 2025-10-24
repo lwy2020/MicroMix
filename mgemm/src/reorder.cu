@@ -633,6 +633,21 @@ template void run_reorder_quantize_w4<32, 18944>(
   sf_t*, sf_t*, sf_t*, int, int, int
 );
 
+template void run_reorder_quantize_x<32, 11008>(
+  bf16_t*, int, int16_t*, uint8_t*, uint8_t*, uint8_t*,
+  sf_t*, sf_t*, sf_t*, int, int, int
+);
+
+template void run_reorder_quantize_w<32, 11008>(
+  bf16_t*, int, int16_t*, uint8_t*, uint8_t*, uint8_t*,
+  sf_t*, sf_t*, sf_t*, int, int, int
+);
+
+template void run_reorder_quantize_w4<32, 11008>(
+  bf16_t*, int, int16_t*, uint8_t*, uint8_t*, uint8_t*,
+  sf_t*, sf_t*, sf_t*, int, int, int
+);
+
 template void run_reorder_quantize_x<32, 12288>(
   bf16_t*, int, int16_t*, uint8_t*, uint8_t*, uint8_t*,
   sf_t*, sf_t*, sf_t*, int, int, int
