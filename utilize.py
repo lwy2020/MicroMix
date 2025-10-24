@@ -202,11 +202,9 @@ def search_p4_p6_proportions(model, dataloader, device_, seqlen, reorder_index, 
             )
 
     layers = model.model.layers
-    model.model.embed_tokens = model.model.embed_tokens.to(device)
-    if not model.model.norm.weight.is_meta:
-        model.model.norm = model.model.norm.to(device)
-    layers[0] = layers[0].to(device)
-
+    
+    model.to(device)
+    
     dtype = next(iter(model.parameters())).dtype
     inps = torch.zeros(
         (nsamples, seqlen, model.config.hidden_size), dtype=dtype, device=device
@@ -226,18 +224,17 @@ def search_p4_p6_proportions(model, dataloader, device_, seqlen, reorder_index, 
     layers[0] = Catcher(layers[0])
 
     dataloader = torch.stack(dataloader, dim=0).squeeze(1)
-
+    
     try:
         model(torch.tensor(dataloader).to(device))
     except ValueError:
         pass
-
+    
     
     layers[0] = layers[0].module
     layers[0] = layers[0].cpu()
-    model.model.embed_tokens = model.model.embed_tokens.cpu()
-    if not model.model.norm.weight.is_meta:
-        model.model.norm = model.model.norm.cpu()
+    model.cpu()
+
     torch.cuda.empty_cache()
 
     inps = cache['inps']
@@ -258,9 +255,9 @@ def search_p4_p6_proportions(model, dataloader, device_, seqlen, reorder_index, 
             keys = keys.reshape(-1, keys.shape[-1]).contiguous()
             seqlen, in_features = keys.shape 
        
-            p4_threshold = keys.max(dim=-1, keepdim=True)[0] * math.pow(2, 1) / 254 * 8 / 6 
+            p4_threshold = keys.max(dim=-1, keepdim=True)[0] * math.pow(2, 1) / 254 * 8 / 6 *2
             # p6_threshold = keys.max(dim=-1, keepdim=True)[0] * math.pow(2, 1) / 254 * 32 / 7.5  #E2M3
-            p6_threshold = keys.max(dim=-1, keepdim=True)[0] * math.pow(2, 3) / 254 * 32 / 28   #E3M2
+            p6_threshold = keys.max(dim=-1, keepdim=True)[0] * math.pow(2, 3) / 254 * 32 / 28 *2   #E3M2
      
             p4_ratio = (keys < p4_threshold).sum() / keys.numel()
             p6_ratio = (keys < p6_threshold).sum() / keys.numel() - p4_ratio
@@ -270,7 +267,7 @@ def search_p4_p6_proportions(model, dataloader, device_, seqlen, reorder_index, 
             p4_num = in_features - p8_num - p6_num
             average_bits[name] = 4 * p4_ratio + 6 * p6_ratio + 8 * p8_ratio
             
-            print(f'p4_ratio is {p4_ratio}, p6_ratio is {p6_ratio}, p8_ratio is {p8_ratio}, avg:{average_bits[name]}')
+            print(f'p4_num is {p4_ratio}, p6_num is {p6_ratio}, p8_num is {p8_ratio}, avg:{average_bits[name]}')
             p6_nums[name] = p6_num
             p8_nums[name] = p8_num
 
