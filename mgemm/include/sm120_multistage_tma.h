@@ -9,14 +9,18 @@
 
 using namespace cute;
 
-template<class ElementA, class ElementB, class ElementC, class ElementSF,
-        int BM = 128, int BN = 128, int BK = 128, int N_STAGE = 2>
+template<
+        int N_STAGE = 2, int BM = 128, int BN = 128, int BK = 128, 
+        class ElementA, class ElementB, class ElementC, class ElementD, class ElementSF>
 void
 gemm_host_tn(ElementA *ptr_A, ElementSF *ptr_SFA,
-                   ElementB *ptr_B, ElementSF *ptr_SFB,
-                   ElementC *ptr_C, int M, int N, int K) {
+             ElementB *ptr_B, ElementSF *ptr_SFB,
+             ElementC *ptr_C, 
+             ElementD *ptr_D, 
+             int M, int N, int K) {
 
-    if (ptr_A == nullptr || ptr_B == nullptr || ptr_C == nullptr ||
+    if (ptr_A == nullptr || ptr_B == nullptr ||
+        ptr_C == nullptr || ptr_D == nullptr ||
         ptr_SFA == nullptr || ptr_SFB == nullptr) {
         std::cerr << "Error: Null pointer provided to gemm_host_tn" << std::endl;
         return;
@@ -26,7 +30,7 @@ gemm_host_tn(ElementA *ptr_A, ElementSF *ptr_SFA,
     assert(BM > 0 && BN > 0 && BK > 0 && M > 0 && N > 0 && K > 0 && K % BK == 0);
 
     // Input type check
-    static_assert(BK % 128 == 0);
+    static_assert(BK == 128);
     static_assert(sizeof_bits_v<ElementA> <= 8);
     static_assert(sizeof_bits_v<ElementB> <= 8);
     static_assert(is_same_v<ElementSF, cutlass::float_ue8m0_t>);
@@ -46,6 +50,7 @@ gemm_host_tn(ElementA *ptr_A, ElementSF *ptr_SFA,
     auto layout_A = make_layout(make_shape(M, K), make_stride(K, Int<1>{}));
     auto layout_B = make_layout(make_shape(N, K), make_stride(K, Int<1>{}));
     auto layout_C = make_layout(make_shape(M, N), make_stride(N, Int<1>{}));
+    auto layout_D = make_layout(make_shape(M, N), make_stride(N, Int<1>{}));
 
     auto [layout_SFA, layout_SFB] = sm120_get_SF_layout<BM, BN, BK, SFVecSize>(M, N, K);
 
@@ -83,8 +88,10 @@ gemm_host_tn(ElementA *ptr_A, ElementSF *ptr_SFA,
 
     using SmemLayoutAtomA = decltype(cutlass::gemm::collective::detail::sm120_rr_smem_selector<SmemAllocTypeA, Int<BK>>());
     using SmemLayoutAtomB = decltype(cutlass::gemm::collective::detail::sm120_rr_smem_selector<SmemAllocTypeB, Int<BK>>());
-    using SmemLayoutAtomC = decltype(cutlass::epilogue::collective::detail::sm120_get_epilogue_smem_swizzle_layout_atom
-            <Stride<_32, _1>, ElementC, EpilogueTile_MN>());
+    using SmemLayoutAtomD = decltype(cutlass::epilogue::collective::detail::sm120_get_epilogue_smem_swizzle_layout_atom
+            <Stride<_32, _1>, ElementD, EpilogueTile_MN>());
+    using SmemLayoutAtomC = SmemLayoutAtomD;
+
     // Construct SMEM layout for SF
     // A single indivisible block will hold 4 scale factors of 128 rows/columns (A/B matrix).
     // 4 is chosen to make consecutive 32bits of data to have scale factors for only a single row (col).
@@ -140,15 +147,17 @@ gemm_host_tn(ElementA *ptr_A, ElementSF *ptr_SFA,
     using SmemLayoutB = decltype(tile_to_shape(
             SmemLayoutAtomB{},
             make_shape(Int<BN>{}, Int<BK>{}, Int<N_STAGE>{})));
-    using SmemLayoutC = decltype(tile_to_shape(
-            SmemLayoutAtomC{},
+    using SmemLayoutD = decltype(tile_to_shape(
+            SmemLayoutAtomD{},
             make_shape(Int<BM>{}, Int<BN>{}),
             Step<_2, _1>{}));
+    using SmemLayoutC = SmemLayoutD;
 /*    print("SmemLayoutAtomC:      "); print(SmemLayoutAtomC{}); print('\n');
     print("SmemLayoutC:           "); print(SmemLayoutC{}); print('\n');*/
     static_assert(rank(SmemLayoutA{}) == 3, "Smem layout A must be rank 3 (BM,BK,PIPE)");
     static_assert(rank(SmemLayoutB{}) == 3, "Smem layout B must be rank 3 (BN,BK,PIPE)");
     static_assert(rank(SmemLayoutC{}) == 2, "Smem layout C must be rank 2 (BM,BN)");
+    static_assert(rank(SmemLayoutD{}) == 2, "Smem layout D must be rank 2 (BM,BN)");
 
     using SmemLayoutSFA = decltype(make_layout(
             append(shape(SmemLayoutAtomSFA{}), Int<N_STAGE>{}),
@@ -162,17 +171,17 @@ gemm_host_tn(ElementA *ptr_A, ElementSF *ptr_SFA,
 
 
     using MainloopPipeline = cutlass::PipelineTmaAsync<N_STAGE>;
+    using EpiloguePipeline = cutlass::PipelineTmaAsync<1>;
 //    using PipelineParams = typename MainloopPipeline::Params;
-    using PipelineState = typename cutlass::PipelineState<N_STAGE>;
+    using MainloopPipelineState = typename cutlass::PipelineState<N_STAGE>;
+    using EpiloguePipelineState = typename cutlass::PipelineState<1>;
 
     using MyMainloopSharedStorage = MainloopSharedStorage<
-            SmemLayoutA, SmemLayoutB, SmemLayoutSFA, SmemLayoutSFB,
-            SmemAllocTypeA, SmemAllocTypeB, ElementSF,
-            MainloopPipeline
+            SmemLayoutA, SmemLayoutB, SmemLayoutC, SmemLayoutSFA, SmemLayoutSFB,
+            SmemAllocTypeA, SmemAllocTypeB, ElementC, ElementSF,
+            MainloopPipeline, EpiloguePipeline
     >;
-    using MyEpilogueSharedStorage = EpilogueSharedStorage<
-            SmemLayoutC, ElementC
-    >;
+    using MyEpilogueSharedStorage = EpilogueSharedStorage<SmemLayoutD, ElementD>;
 
     static constexpr int MainloopSharedStorageSize = sizeof(MyMainloopSharedStorage);
     static constexpr int EpilogueSharedStorageSize = sizeof(MyEpilogueSharedStorage);
@@ -191,7 +200,9 @@ gemm_host_tn(ElementA *ptr_A, ElementSF *ptr_SFA,
                     cosize(take<0, 2>(SmemLayoutSFB{})) * cute::sizeof_bits_v<ElementSF>) +
             cutlass::bits_to_bytes(size(take<0, 2>(SmemLayoutB{})) * sizeof_bits<ElementB>::value));
 
-    static constexpr uint32_t TmaTransactionBytes = TmaTransactionBytesMK + TmaTransactionBytesNK;
+    constexpr uint32_t MainloopTmaTransactionBytes = TmaTransactionBytesMK + TmaTransactionBytesNK;
+    constexpr uint32_t EpilogueTmaTransactionBytes = static_cast<uint32_t>(
+            cutlass::bits_to_bytes(cosize(SmemLayoutC{}) * sizeof_bits_v<ElementC>));
 
     //sub-byte set as unpackment_t
     using TmaInternalElementA = cute::conditional_t<not isF8F6F4,
@@ -218,6 +229,7 @@ gemm_host_tn(ElementA *ptr_A, ElementSF *ptr_SFA,
     Tensor mB_raw = make_tensor(recast_ptr<TmaInternalElementB>(ptr_B), layout_B);  // (N, K)
     Tensor mSFA_raw = make_tensor(ptr_SFA, layout_SFA);                             // (M, K/32) ?
     Tensor mSFB_raw = make_tensor(ptr_SFB, layout_SFB);                             // (N, K/32) ?
+    Tensor mD_raw = make_tensor(ptr_D, layout_D);                                   // (M, N) ?
     Tensor mC_raw = make_tensor(ptr_C, layout_C);                                   // (M, N) ?
 
     // TMA Copy Define
@@ -249,10 +261,17 @@ gemm_host_tn(ElementA *ptr_A, ElementSF *ptr_SFA,
             make_shape(shape<1>(TileShape_MNK{}), shape<2>(TileShape_MNK{})),
             _1{}); // No programmatic multicast
 
-    auto tma_store_c = make_tma_copy(
-            SM90_TMA_STORE{},
+    auto tma_load_c = make_tma_copy(
+            SM90_TMA_LOAD{},
             mC_raw,
             SmemLayoutC{},
+            make_shape(shape<0>(TileShape_MNK{}), shape<1>(TileShape_MNK{})),
+            _1{}); // No programmatic multicast
+
+    auto tma_store_d = make_tma_copy(
+            SM90_TMA_STORE{},
+            mD_raw,
+            SmemLayoutD{},
             make_shape(shape<0>(TileShape_MNK{}), shape<1>(TileShape_MNK{})),
             _1{}); // No programmatic multicast
 
@@ -260,9 +279,10 @@ gemm_host_tn(ElementA *ptr_A, ElementSF *ptr_SFA,
             ElementA, ElementB, isF8F6F4>()), SmemAllocTypeA>;
     using SmemCopyAtomB = Copy_Atom<decltype(cutlass::gemm::collective::detail::sm120_rr_smem_copy_selector_B<
             ElementA, ElementB, isF8F6F4>()), SmemAllocTypeB>;
-/*    using SmemCopyAtomA = Copy_Atom<SM75_U32x4_LDSM_N, SmemAllocTypeA>; // 16x32 for 8-bit element
-    using SmemCopyAtomB = Copy_Atom<SM75_U32x4_LDSM_N, SmemAllocTypeB>; // 16x32 for 8-bit element*/
-    using SmemCopyAtomC = Copy_Atom<SM90_U32x4_STSM_N, ElementC>;       // 8x16 for 16-bit element?
+    //using SmemCopyAtomA = Copy_Atom<SM75_U32x4_LDSM_N, SmemAllocTypeA>; // 16x32 for 8-bit element
+    //using SmemCopyAtomB = Copy_Atom<SM75_U32x4_LDSM_N, SmemAllocTypeB>; // 16x32 for 8-bit element
+    using SmemCopyAtomC = Copy_Atom<SM75_U32x4_LDSM_N, ElementC>;
+    using SmemCopyAtomD = Copy_Atom<SM90_U32x4_STSM_N, ElementD>;       // 8x16 for 16-bit element?
 
     // auto-vectorized LDS
     using SmemCopyAtomSF = Copy_Atom<UniversalCopy<SmemAllocTypeSF>, SmemAllocTypeSF>;
@@ -283,20 +303,25 @@ gemm_host_tn(ElementA *ptr_A, ElementSF *ptr_SFA,
                                                              tma_load_b, layout_B,
                                                              tma_load_sfa, layout_SFA,
                                                              tma_load_sfb, layout_SFB,
-                                                             tma_store_c, layout_C);
+                                                             tma_load_c, layout_C,
+                                                             tma_store_d, layout_D);
         cudaDeviceSynchronize();
         checkCudaLastErrors();
     };
 
 
     auto kernel_ptr = gemm_device_multistage_warpspecialized<
-            decltype(layout_A), SmemLayoutA, decltype(tma_load_a), SmemCopyAtomA,
-            decltype(layout_B), SmemLayoutB, decltype(tma_load_b), SmemCopyAtomB,
-            decltype(layout_SFA), SmemLayoutSFA, decltype(tma_load_sfa), SmemCopyAtomSFA,
-            decltype(layout_SFB), SmemLayoutSFB, decltype(tma_load_sfb), SmemCopyAtomSFB,
-            decltype(layout_C), SmemLayoutC, decltype(tma_store_c), SmemCopyAtomC,
-            TiledMMA, decltype(prob_shape), TileShape_MNK, MyMainloopSharedStorage, MyEpilogueSharedStorage,
-            MainloopPipeline, PipelineState, N_STAGE, TmaTransactionBytes>;
+            ElementA, decltype(layout_A), SmemLayoutA, decltype(tma_load_a), SmemCopyAtomA,
+            ElementB, decltype(layout_B), SmemLayoutB, decltype(tma_load_b), SmemCopyAtomB,
+            ElementSF, decltype(layout_SFA), SmemLayoutSFA, decltype(tma_load_sfa), SmemCopyAtomSFA,
+            ElementSF, decltype(layout_SFB), SmemLayoutSFB, decltype(tma_load_sfb), SmemCopyAtomSFB,
+            ElementC, decltype(layout_C), SmemLayoutC, decltype(tma_load_c), SmemCopyAtomC,
+            ElementD, decltype(layout_D), SmemLayoutD, decltype(tma_store_d), SmemCopyAtomD,
+            TiledMMA, decltype(prob_shape), TileShape_MNK, 
+            MyMainloopSharedStorage, MyEpilogueSharedStorage,
+            MainloopPipeline, MainloopPipelineState, 
+            EpiloguePipeline, EpiloguePipelineState, 
+            N_STAGE, MainloopTmaTransactionBytes, EpilogueTmaTransactionBytes>;
 
     launch(kernel_ptr);
 

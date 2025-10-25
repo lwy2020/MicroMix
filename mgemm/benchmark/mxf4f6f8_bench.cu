@@ -19,7 +19,7 @@ using Type4 = cutlass::mx_float4_t<cutlass::float_e2m1_t>;
 using Type6 = cutlass::mx_float6_t<cutlass::float_e3m2_t>;
 using Type8 = cutlass::mx_float8_t<cutlass::float_e4m3_t>;
 
-constexpr int BM = 32;
+constexpr int BM = 128;
 constexpr int BN = BM;
 constexpr int BK = 128;
 constexpr int N_STAGE = (BM == 128) ? 2 : 8;
@@ -148,7 +148,7 @@ void run_benchmark(
 
     if (do_validation) {
         auto kernel_val_lambda = [&]() {
-            kernel_to_run(A_d, SFA_d, B_d, SFB_d, D_d, M, N, K);
+            kernel_to_run(A_d, SFA_d, B_d, SFB_d, C_d, D_d, M, N, K);
         };
         auto ref_val_lambda = [&]() {
             ref_kernel_to_run(A_d, B_d, M, N, K, C_d, D_d_ref, SFA_d, SFB_d);
@@ -157,7 +157,7 @@ void run_benchmark(
     }
 
     auto kernel_bench_lambda = [&]() {
-        kernel_to_run(A_d, SFA_d, B_d, SFB_d, D_d, M, N, K);
+        kernel_to_run(A_d, SFA_d, B_d, SFB_d, C_d, D_d, M, N, K);
     };
 
     float milliseconds = perform_benchmark(timed_iters, kernel_bench_lambda);
@@ -195,10 +195,10 @@ void launch_and_run_benchmark(int M, int N, int K, int timed_iters, bool do_vali
     auto kernel_launcher =
         [=](typename EA::DataType* pA, typename EA::ScaleFactorType* pSFA,
             typename EB::DataType* pB, typename EB::ScaleFactorType* pSFB,
-            ElementD* pD, int m, int n, int k) {
-        gemm_host_tn<typename EA::DataType, typename EB::DataType, ElementD,
-                     typename EA::ScaleFactorType, BM, BN, BK, N_STAGE
-        >(pA, pSFA, pB, pSFB, pD, m, n, k);
+            ElementC* pC,
+            ElementD* pD, 
+            int m, int n, int k) {
+        gemm_host_tn<N_STAGE, BM, BN, BK>(pA, pSFA, pB, pSFB, pC, pD, m, n, k);
     };
     auto ref_kernel_launcher =
             [=](typename EA::DataType* pA, typename EB::DataType* pB,
@@ -221,7 +221,7 @@ void default_matmul_host(
         typename EA::ScaleFactorType *SFA,
         typename EB::ScaleFactorType *SFB
 ){
-    print("This GEMM has no REF function, does not support VAL!\n");
+    print("\n\nThis GEMM kernel has no REF implementation, does not support VAL!\n\n");
 }
 int main(int argc, char** argv) {
     int M = 2048;

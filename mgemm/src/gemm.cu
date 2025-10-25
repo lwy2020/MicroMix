@@ -4,7 +4,7 @@
 #include "w4a6.h"
 #include "w4a8.h"
 #include "gemm.h"
-
+#include "sm120_multistage_tma.h"
 /////////////////////////////////////////////////////////////////////////////////////////////////
 /// GEMM kernel configurations
 /////////////////////////////////////////////////////////////////////////////////////////////////
@@ -45,9 +45,24 @@ void matmul_host(
         const ElementBOutlier::ScaleFactorType *SFBO
 )
 {
-    if(KN!=0)matmul_host_w4a4(AN, BN, M, N, KN, C, D, SFAN, SFBN);
-    if(KS!=0)matmul_host_w6a6(AS, BS, M, N, KS, D, D, SFAS, SFBS);
-    if(KO!=0)matmul_host_w8a8(AO, BO, M, N, KO, D, D, SFAO, SFBO);
+    // constexpr int BM = 32, BN = 32, BK = 128;
+    // constexpr int sm_count_threshold = 150;
+    // bool use_cutlass_kernel = (cute::ceil_div(M , 128) * cute::ceil_div(N , 128)) > sm_count_threshold;
+    if(1)
+    {
+        if(KN!=0)matmul_host_w4a4(AN, BN, M, N, KN, C, D, SFAN, SFBN);
+        if(KS!=0)matmul_host_w6a6(AS, BS, M, N, KS, D, D, SFAS, SFBS);
+        if(KO!=0)matmul_host_w8a8(AO, BO, M, N, KO, D, D, SFAO, SFBO);
+    }
+    else
+    {
+        // gemm_host_tn<ElementANormal::DataType, 
+        //              ElementBNormal::DataType,
+        //              ElementD,
+        //              ElementANormal::ScaleFactorType,
+        //              BM, BN, BK, 6>;
+    }
+    
 }
 
 void matmul_w4_host(

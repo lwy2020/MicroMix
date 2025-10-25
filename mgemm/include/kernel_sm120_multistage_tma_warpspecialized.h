@@ -66,13 +66,17 @@ fp4_shift_B(SM120::BLOCKSCALED::SM120_16x8x32_TN_VS<AType, BType, CType, SFType,
 
 using namespace cute;
 template<
-        class LayoutA, class SmemLayoutA, class TmaLoadA, class SmemCopyAtomA,
-        class LayoutB, class SmemLayoutB, class TmaLoadB, class SmemCopyAtomB,
-        class LayoutSFA, class SmemLayoutSFA, class TmaLoadSFA, class SmemCopyAtomSFA,
-        class LayoutSFB, class SmemLayoutSFB, class TmaLoadSFB, class SmemCopyAtomSFB,
-        class LayoutC, class SmemLayoutC, class TmaStoreC, class SmemCopyAtomC,
-        class MMA, class ProbShape_MNK, class TileShape_MNK, class MainloopSharedStorage, class EpilogueSharedStorage,
-        class MainloopPipeline, class PipelineState, int N_STAGE, int TmaTransactionBytes>
+        class ElementA, class LayoutA, class SmemLayoutA, class TmaLoadA, class SmemCopyAtomA,
+        class ElementB, class LayoutB, class SmemLayoutB, class TmaLoadB, class SmemCopyAtomB,
+        class ElementSFA, class LayoutSFA, class SmemLayoutSFA, class TmaLoadSFA, class SmemCopyAtomSFA,
+        class ElementSFB, class LayoutSFB, class SmemLayoutSFB, class TmaLoadSFB, class SmemCopyAtomSFB,
+        class ElementC, class LayoutC, class SmemLayoutC, class TmaLoadC, class SmemCopyAtomC,
+        class ElementD, class LayoutD, class SmemLayoutD, class TmaStoreD, class SmemCopyAtomD,
+        class MMA, class ProbShape_MNK, class TileShape_MNK, 
+        class MainloopSharedStorage, class EpilogueSharedStorage,
+        class MainloopPipeline, class MainloopPipelineState, 
+        class EpiloguePipeline, class EpiloguePipelineState, 
+        int N_STAGE, int MainloopTmaTransactionBytes, int EpilogueTmaTransactionBytes>
 //__launch_bounds__(256, 1)
 __global__
 void
@@ -84,8 +88,10 @@ gemm_device_multistage_warpspecialized(__grid_constant__ const TmaLoadA tma_load
                                        LayoutSFA layout_SFA,
                                        __grid_constant__ const TmaLoadSFB tma_load_sfb,
                                        LayoutSFB layout_SFB,
-                                       __grid_constant__ const TmaStoreC tma_store_c,
-                                       LayoutC layout_C) {
+                                       __grid_constant__ const TmaLoadC tma_load_c,
+                                       LayoutC layout_C,
+                                       __grid_constant__ const TmaStoreD tma_store_d,
+                                       LayoutD layout_D) {
 
     enum class WarpGroupRole {
         Producer = 0,
@@ -122,15 +128,16 @@ gemm_device_multistage_warpspecialized(__grid_constant__ const TmaLoadA tma_load
         cute::prefetch_tma_descriptor(tma_load_b.get_tma_descriptor());
         cute::prefetch_tma_descriptor(tma_load_sfa.get_tma_descriptor());
         cute::prefetch_tma_descriptor(tma_load_sfb.get_tma_descriptor());
-        cute::prefetch_tma_descriptor(tma_store_c.get_tma_descriptor());
+        cute::prefetch_tma_descriptor(tma_load_c.get_tma_descriptor());
+        cute::prefetch_tma_descriptor(tma_store_d.get_tma_descriptor());
     }
 
     Tensor mA = tma_load_a.get_tma_tensor(shape(layout_A));             // (M, K)
     Tensor mB = tma_load_b.get_tma_tensor(shape(layout_B));             // (N, K)
     Tensor mSFA = tma_load_sfa.get_tma_tensor(shape(layout_SFA));       // (M, K)
     Tensor mSFB = tma_load_sfb.get_tma_tensor(shape(layout_SFB));       // (N, K)
-
-    Tensor mC = tma_store_c.get_tma_tensor(shape(layout_C));
+    Tensor mC = tma_load_c.get_tma_tensor(shape(layout_C));             // (M, N)
+    Tensor mD = tma_store_d.get_tma_tensor(shape(layout_D));            // (M, N)
 
     auto const block_coord = make_coord(block_x, block_y, _);
     Tensor gA = local_tile(mA, TileShape_MNK{}, block_coord, Step < _1, X, _1 > {});        // (BLK_M, BLK_K, k_tile)
@@ -138,6 +145,7 @@ gemm_device_multistage_warpspecialized(__grid_constant__ const TmaLoadA tma_load
     Tensor gSFA = local_tile(mSFA, TileShape_MNK{}, block_coord, Step < _1, X, _1 > {});    // (BLK_M, BLK_K, k_tile)
     Tensor gSFB = local_tile(mSFB, TileShape_MNK{}, block_coord, Step < X, _1, _1 > {});    // (BLK_N, BLK_K, k_tile)
     Tensor gC = local_tile(mC, TileShape_MNK{}, block_coord, Step < _1, _1, X > {});        // (BLK_M, BLK_N)
+    Tensor gD = local_tile(mD, TileShape_MNK{}, block_coord, Step < _1, _1, X > {});        // (BLK_M, BLK_N)
 
 
     auto &mainloop_shared_tensors = mainloop_shared_storage.tensors;
@@ -146,7 +154,8 @@ gemm_device_multistage_warpspecialized(__grid_constant__ const TmaLoadA tma_load
     Tensor sB = make_tensor(make_smem_ptr(mainloop_shared_tensors.smem_B.begin()), SmemLayoutB{});          // (BLK_N,BLK_K,PIPE)
     Tensor sSFA = make_tensor(make_smem_ptr(mainloop_shared_tensors.smem_SFA.begin()), SmemLayoutSFA{});    // (BLK_M,BLK_K,PIPE)
     Tensor sSFB = make_tensor(make_smem_ptr(mainloop_shared_tensors.smem_SFB.begin()), SmemLayoutSFB{});    // (BLK_N,BLK_K,PIPE)
-    Tensor sC = make_tensor(make_smem_ptr(epilogue_shared_tensors.smem_C.begin()), SmemLayoutC{});          // (BLK_M, BLK_N)
+    Tensor sC = make_tensor(make_smem_ptr(mainloop_shared_tensors.smem_C.begin()), SmemLayoutC{});          // (BLK_M, BLK_N)
+    Tensor sD = make_tensor(make_smem_ptr(epilogue_shared_tensors.smem_D.begin()), SmemLayoutD{});          // (BLK_M, BLK_N)
 
     /*if(1 && thread0() && block_x == 0 && block_y == 0)
     {
@@ -221,8 +230,8 @@ gemm_device_multistage_warpspecialized(__grid_constant__ const TmaLoadA tma_load
 
     }*/
 
-    using BarrierType = typename MainloopPipeline::ProducerBarrierType;
-    // TMA Params set
+    
+    // Mainloop TMA Params set
     typename MainloopPipeline::Params mainloop_pipeline_params;
     if (warp_group_role == WarpGroupRole::Producer &&
         producer_warp_role == ProducerWarpRole::MainloopEpilogue) {
@@ -231,17 +240,37 @@ gemm_device_multistage_warpspecialized(__grid_constant__ const TmaLoadA tma_load
     if (warp_group_role == WarpGroupRole::Consumer) {
         mainloop_pipeline_params.role = MainloopPipeline::ThreadCategory::Consumer;
     }
-    mainloop_pipeline_params.transaction_bytes = TmaTransactionBytes;
+    mainloop_pipeline_params.transaction_bytes = MainloopTmaTransactionBytes;
     mainloop_pipeline_params.is_leader = warp_group_thread_idx == 0;
     mainloop_pipeline_params.num_consumers = cutlass::NumThreadsPerWarpGroup; //size(MMA{});
 
+    // Epilogue TMA Params set
+    typename EpiloguePipeline::Params epilogue_pipeline_params;
+    if (warp_group_role == WarpGroupRole::Producer &&
+        producer_warp_role == ProducerWarpRole::MainloopEpilogue) {
+        epilogue_pipeline_params.role = EpiloguePipeline::ThreadCategory::Producer;
+    }
+    if (warp_group_role == WarpGroupRole::Consumer) {
+        epilogue_pipeline_params.role = EpiloguePipeline::ThreadCategory::Consumer;
+    }
+    epilogue_pipeline_params.transaction_bytes = EpilogueTmaTransactionBytes;
+    epilogue_pipeline_params.is_leader = warp_group_thread_idx == 0;
+    epilogue_pipeline_params.num_consumers = cutlass::NumThreadsPerWarpGroup; //size(MMA{});
+
     //SM120 No Cluster
     auto cluster_shape = Shape < _1, _1, _1>{};
-    MainloopPipeline pipeline(mainloop_shared_storage.pipeline_storage, mainloop_pipeline_params,
+
+    MainloopPipeline mainloop_pipeline(mainloop_shared_storage.mainloop_pipeline_storage, mainloop_pipeline_params,
                               cluster_shape);
 
-    PipelineState smem_pipe_write = cutlass::make_producer_start_state<MainloopPipeline>();
-    PipelineState smem_pipe_read;
+    EpiloguePipeline epilogue_pipeline(mainloop_shared_storage.epilogue_pipeline_storage, epilogue_pipeline_params,
+                              cluster_shape);
+
+    MainloopPipelineState mainloop_smem_pipe_write = cutlass::make_producer_start_state<MainloopPipeline>();
+    MainloopPipelineState mainloop_smem_pipe_read;
+
+    EpiloguePipelineState epilogue_smem_pipe_write = cutlass::make_producer_start_state<EpiloguePipeline>();
+    EpiloguePipelineState epilogue_smem_pipe_read;
 
     int num_k_tile = size<2>(gA);
 
@@ -261,6 +290,8 @@ gemm_device_multistage_warpspecialized(__grid_constant__ const TmaLoadA tma_load
             auto block_tma_sfa = tma_load_sfa.get_slice(0);
             auto block_tma_sfb = tma_load_sfb.get_slice(0);
 
+            auto block_tma_c = tma_load_c.get_slice(0);
+
             // Partition source and destination tensors for tma copies
             Tensor tAgA = block_tma_a.partition_S(gA);                   // (TMA,TMA_M,TMA_K,k)
             Tensor tAsA = block_tma_a.partition_D(sA);                   // (TMA,TMA_M,TMA_K,PIPE)
@@ -274,6 +305,8 @@ gemm_device_multistage_warpspecialized(__grid_constant__ const TmaLoadA tma_load
             Tensor tBgSFB = block_tma_sfb.partition_S(gSFB);             // (TMA,TMA_N,TMA_K,k)
             Tensor tBsSFB = block_tma_sfb.partition_D(sSFB);             // (TMA,TMA_N,TMA_K,PIPE)
 
+            Tensor tCgC = block_tma_c.partition_S(gC);                   // (TMA,TMA_M,TMA_N)
+            Tensor tCsC = block_tma_c.partition_D(sC);                   // (TMA,TMA_M,TMA_N)
 
             static_assert(rank(gSFA) == Int<3>{}, "gSFA rank should be 3 (BLK_M, BLK_K, k_tile)");
             static_assert(rank(sSFA) == Int<3>{}, "sSFA rank should be 3 (BLK_M, BLK_K, PIPE)");
@@ -294,18 +327,27 @@ gemm_device_multistage_warpspecialized(__grid_constant__ const TmaLoadA tma_load
                 // Mainloop tiles load
                 for (int i = 0; i < num_k_tile; i++) {
 
-                    pipeline.producer_acquire(smem_pipe_write);
+                    mainloop_pipeline.producer_acquire(mainloop_smem_pipe_write);
 
-                    BarrierType *tmaBar = pipeline.producer_get_barrier(smem_pipe_write);
+                    using BarrierType = typename MainloopPipeline::ProducerBarrierType;
+                    BarrierType *tmaBar = mainloop_pipeline.producer_get_barrier(mainloop_smem_pipe_write);
 
-                    int write_stage = smem_pipe_write.index();
+                    int write_stage = mainloop_smem_pipe_write.index();
                     copy(tma_load_a.with(*tmaBar), tAgA(_, _, _, i), tAsA(_, _, _, write_stage));
                     copy(tma_load_b.with(*tmaBar), tBgB(_, _, _, i), tBsB(_, _, _, write_stage));
                     copy(tma_load_sfa.with(*tmaBar), tAgSFA(_, _, _, i), tAsSFA(_, _, _, write_stage));
                     copy(tma_load_sfb.with(*tmaBar), tBgSFB(_, _, _, i), tBsSFB(_, _, _, write_stage));
 
-                    ++smem_pipe_write;
+                    ++mainloop_smem_pipe_write;
                 }
+
+                //Epilogue C load
+                epilogue_pipeline.producer_acquire(epilogue_smem_pipe_write);
+                using BarrierType = typename EpiloguePipeline::ProducerBarrierType;
+                BarrierType *tmaBar = epilogue_pipeline.producer_get_barrier(epilogue_smem_pipe_write);
+                copy(tma_load_c.with(*tmaBar), tCgC, tCsC);
+                ++epilogue_smem_pipe_write;
+
             }
             __syncwarp();
         }
@@ -316,32 +358,31 @@ gemm_device_multistage_warpspecialized(__grid_constant__ const TmaLoadA tma_load
         auto thread_mma = tiled_mma.get_thread_slice(thread_idx);
 
         // Allocate fragments and descriptors
-        Tensor tCrA = thread_mma.partition_fragment_A(sA(_, _, Int<0>{}));      // (MMA,MMA_M,MMA_K)
-        Tensor tCrB = thread_mma.partition_fragment_B(sB(_, _, Int<0>{}));      // (MMA,MMA_N,MMA_K)
-        Tensor tCrC = thread_mma.partition_fragment_C(gC);                      // (MMA,MMA_M,MMA_N)
-        Tensor tCgC = thread_mma.partition_C(gC);                               // (MMA,MMA_M,MMA_N)
+        Tensor tDrA = thread_mma.partition_fragment_A(sA(_, _, Int<0>{}));      // (MMA,MMA_M,MMA_K)
+        Tensor tDrB = thread_mma.partition_fragment_B(sB(_, _, Int<0>{}));      // (MMA,MMA_N,MMA_K)
+        Tensor tDrD = thread_mma.partition_fragment_C(gD);                      // (MMA,MMA_M,MMA_N)
 
         // clear accumulator
-        clear(tCrC);
+        clear(tDrD);
 
-        Tensor tCrSFA = partition_fragment_SFA(sSFA(_, _, Int<0>{}), thread_mma);   // (MMA,MMA_M,MMA_K)
-        Tensor tCrSFB = partition_fragment_SFB(sSFB(_, _, Int<0>{}), thread_mma);   // (MMA,MMA_N,MMA_K)
+        Tensor tDrSFA = partition_fragment_SFA(sSFA(_, _, Int<0>{}), thread_mma);   // (MMA,MMA_M,MMA_K)
+        Tensor tDrSFB = partition_fragment_SFB(sSFB(_, _, Int<0>{}), thread_mma);   // (MMA,MMA_N,MMA_K)
 
-        // A
+        // A: S->R
         auto smem_tiled_copy_A = make_tiled_copy_A(SmemCopyAtomA{}, tiled_mma);
         auto smem_thr_copy_A = smem_tiled_copy_A.get_thread_slice(warp_group_thread_idx);
-        Tensor tCsA = smem_thr_copy_A.partition_S(
+        Tensor tDsA = smem_thr_copy_A.partition_S(
                 as_position_independent_swizzle_tensor(sA));        // (CPY,CPY_M,CPY_K,PIPE)
-        Tensor tCrA_copy_view = smem_thr_copy_A.retile_D(tCrA);     // (CPY,CPY_M,CPY_K)
+        Tensor tDrA_copy_view = smem_thr_copy_A.retile_D(tDrA);     // (CPY,CPY_M,CPY_K)
 
-        // B
+        // B: S->R
         auto smem_tiled_copy_B = make_tiled_copy_B(SmemCopyAtomB{}, tiled_mma);
         auto smem_thr_copy_B = smem_tiled_copy_B.get_thread_slice(warp_group_thread_idx);
-        Tensor tCsB = smem_thr_copy_B.partition_S(
+        Tensor tDsB = smem_thr_copy_B.partition_S(
                 as_position_independent_swizzle_tensor(sB));        // (CPY,CPY_M,CPY_K,PIPE)
-        Tensor tCrB_copy_view = smem_thr_copy_B.retile_D(tCrB);     // (CPY,CPY_M,CPY_K)
+        Tensor tDrB_copy_view = smem_thr_copy_B.retile_D(tDrB);     // (CPY,CPY_M,CPY_K)
 
-        // SFA
+        // SFA: S->R
         auto tile_shape_mnk = tile_shape(tiled_mma);
         auto smem_tiled_copy_SFA = make_tiled_copy_impl(SmemCopyAtomSFA{},
                                                         get_layoutSFA_TV(tiled_mma),
@@ -349,107 +390,111 @@ gemm_device_multistage_warpspecialized(__grid_constant__ const TmaLoadA tma_load
                                                                    size<2>(tile_shape_mnk))
         );
         auto smem_thr_copy_SFA = smem_tiled_copy_SFA.get_thread_slice(warp_group_thread_idx);
-        Tensor tCsSFA = smem_thr_copy_SFA.partition_S(
+        Tensor tDsSFA = smem_thr_copy_SFA.partition_S(
                 as_position_independent_swizzle_tensor(sSFA));           // (CPY,CPY_M,CPY_K,PIPE)
-        Tensor tCrSFA_copy_view = smem_thr_copy_SFA.retile_D(tCrSFA);    // (CPY,CPY_M,CPY_K)
+        Tensor tDrSFA_copy_view = smem_thr_copy_SFA.retile_D(tDrSFA);    // (CPY,CPY_M,CPY_K)
 
-        // SFB
+        // SFB: S->R
         auto smem_tiled_copy_SFB = make_tiled_copy_impl(SmemCopyAtomSFB{},
                                                         get_layoutSFB_TV(tiled_mma),
                                                         make_shape(size<1>(tile_shape_mnk),
                                                                    size<2>(tile_shape_mnk))
         );
         auto smem_thr_copy_SFB = smem_tiled_copy_SFB.get_thread_slice(warp_group_thread_idx);
-        Tensor tCsSFB = smem_thr_copy_SFB.partition_S(
+        Tensor tDsSFB = smem_thr_copy_SFB.partition_S(
                 as_position_independent_swizzle_tensor(sSFB));            // (CPY,CPY_N,CPY_K,PIPE)
-        Tensor tCrSFB_copy_view = smem_thr_copy_SFB.retile_D(tCrSFB);     // (CPY,CPY_N,CPY_K)
+        Tensor tDrSFB_copy_view = smem_thr_copy_SFB.retile_D(tDrSFB);     // (CPY,CPY_N,CPY_K)
 
-        // C
-        auto smem_tiled_copy_C = make_tiled_copy_C(SmemCopyAtomC{}, tiled_mma);
-        auto smem_thr_copy_C = smem_tiled_copy_C.get_thread_slice(warp_group_thread_idx);
-        Tensor tCrC_copy_view = smem_thr_copy_C.retile_S(tCrC);
-        Tensor tCsC_r2s = smem_thr_copy_C.partition_D(sC);
 
-        auto block_tma_c = tma_store_c.get_slice(0);
-        Tensor tCsC_s2g = block_tma_c.partition_S(sC);
-        Tensor tCgC_s2g = block_tma_c.partition_D(gC);
-        if(0 && warp_group_thread_idx == 0)
-        {
-            print("gA:      "); print(gA); print('\n');
-            print("gB:      "); print(gB); print('\n');
-            print("gSFA:    "); print(gSFA); print('\n');
-            print("gSFB:    "); print(gSFB); print('\n');
-            print('\n');
 
-            print("sA:      "); print(sA); print('\n');
-            print("sB:      "); print(sB); print('\n');
-            print("sSFA:    "); print(sSFA); print('\n');
-            print("sSFB:    "); print(sSFB); print('\n');
-            print('\n');
+        // if(0 && warp_group_thread_idx == 0)
+        // {
+        //     print("gA:      "); print(gA); print('\n');
+        //     print("gB:      "); print(gB); print('\n');
+        //     print("gSFA:    "); print(gSFA); print('\n');
+        //     print("gSFB:    "); print(gSFB); print('\n');
+        //     print('\n');
 
-            print("tCsA:    "); print(tCsA); print('\n');
-            print("tCsB:    "); print(tCsB); print('\n');
-            print("tCsSFA:  "); print(tCsSFA); print('\n');
-            print("tCsSFB:  "); print(tCsSFB); print('\n');
-            print('\n');
+        //     print("sA:      "); print(sA); print('\n');
+        //     print("sB:      "); print(sB); print('\n');
+        //     print("sSFA:    "); print(sSFA); print('\n');
+        //     print("sSFB:    "); print(sSFB); print('\n');
+        //     print('\n');
 
-            print("tCrA_copy_view:    "); print(tCrA_copy_view); print('\n');
-            print("tCrB_copy_view:    "); print(tCrB_copy_view); print('\n');
-            print("tCrSFA_copy_view:  "); print(tCrSFA_copy_view); print('\n');
-            print("tCrSFB_copy_view:  "); print(tCrSFB_copy_view); print('\n');
-            print('\n');
+        //     print("tCsA:    "); print(tCsA); print('\n');
+        //     print("tCsB:    "); print(tCsB); print('\n');
+        //     print("tCsSFA:  "); print(tCsSFA); print('\n');
+        //     print("tCsSFB:  "); print(tCsSFB); print('\n');
+        //     print('\n');
 
-            print("tCrA:    "); print(tCrA); print('\n');
-            print("tCrB:    "); print(tCrB); print('\n');
-            print("tCrC:    "); print(tCrC); print('\n');
-            print("tCrSFA:  "); print(tCrSFA); print('\n');
-            print("tCrSFB:  "); print(tCrSFB); print('\n');
-            print('\n');
-        }
+        //     print("tCrA_copy_view:    "); print(tCrA_copy_view); print('\n');
+        //     print("tCrB_copy_view:    "); print(tCrB_copy_view); print('\n');
+        //     print("tCrSFA_copy_view:  "); print(tCrSFA_copy_view); print('\n');
+        //     print("tCrSFB_copy_view:  "); print(tCrSFB_copy_view); print('\n');
+        //     print('\n');
+
+        //     print("tCrA:    "); print(tCrA); print('\n');
+        //     print("tCrB:    "); print(tCrB); print('\n');
+        //     print("tCrC:    "); print(tCrC); print('\n');
+        //     print("tCrSFA:  "); print(tCrSFA); print('\n');
+        //     print("tCrSFB:  "); print(tCrSFB); print('\n');
+        //     print('\n');
+        // }
 /*        if (warp_group_thread_idx == 0) {
             print_latex(smem_tiled_copy_A);
             print_latex(smem_tiled_copy_B);
             print_latex(smem_tiled_copy_SFA);
             print_latex(smem_tiled_copy_SFB);
-            print_latex(smem_tiled_copy_C);
+            print_latex(smem_tiled_copy_D);
         }*/
-        CUTE_STATIC_ASSERT_V(size<1>(tCsA) == size<1>(tCrA_copy_view));      // CPY_M
-        CUTE_STATIC_ASSERT_V(size<2>(tCsA) == size<2>(tCrA_copy_view));      // CPY_K
-        CUTE_STATIC_ASSERT_V(size<1>(tCrA) == size<1>(tCrC));                // MMA_M
-        CUTE_STATIC_ASSERT_V(size<1>(tCrB) == size<2>(tCrC));                // MMA_N
-        CUTE_STATIC_ASSERT_V(size<1>(tCrSFA) == size<1>(tCrC));              // MMA_M
-        CUTE_STATIC_ASSERT_V(size<1>(tCrSFB) == size<2>(tCrC));              // MMA_N
-        CUTE_STATIC_ASSERT_V(size<2>(tCsA) == size<2>(tCsB));                // CPY_K
-        CUTE_STATIC_ASSERT_V(size<3>(tCsA) == size<3>(tCsB));                // PIPE
-        CUTE_STATIC_ASSERT_V(size<2>(tCsSFA) == size<2>(tCsSFB));            // CPY_K
-        CUTE_STATIC_ASSERT_V(size<3>(tCsSFA) == size<3>(tCsSFB));            // PIPE
-        CUTE_STATIC_ASSERT_V(size<1>(tCsSFA) == size<1>(tCrSFA_copy_view));  // CPY_M
-        CUTE_STATIC_ASSERT_V(size<2>(tCsSFA) == size<2>(tCrSFA_copy_view));  // CPY_K
+        CUTE_STATIC_ASSERT_V(size<1>(tDsA) == size<1>(tDrA_copy_view));      // CPY_M
+        CUTE_STATIC_ASSERT_V(size<2>(tDsA) == size<2>(tDrA_copy_view));      // CPY_K
+        CUTE_STATIC_ASSERT_V(size<1>(tDrA) == size<1>(tDrD));                // MMA_M
+        CUTE_STATIC_ASSERT_V(size<1>(tDrB) == size<2>(tDrD));                // MMA_N
+        CUTE_STATIC_ASSERT_V(size<1>(tDrSFA) == size<1>(tDrD));              // MMA_M
+        CUTE_STATIC_ASSERT_V(size<1>(tDrSFB) == size<2>(tDrD));              // MMA_N
+        CUTE_STATIC_ASSERT_V(size<2>(tDsA) == size<2>(tDsB));                // CPY_K
+        CUTE_STATIC_ASSERT_V(size<3>(tDsA) == size<3>(tDsB));                // PIPE
+        CUTE_STATIC_ASSERT_V(size<2>(tDsSFA) == size<2>(tDsSFB));            // CPY_K
+        CUTE_STATIC_ASSERT_V(size<3>(tDsSFA) == size<3>(tDsSFB));            // PIPE
+        CUTE_STATIC_ASSERT_V(size<1>(tDsSFA) == size<1>(tDrSFA_copy_view));  // CPY_M
+        CUTE_STATIC_ASSERT_V(size<2>(tDsSFA) == size<2>(tDrSFA_copy_view));  // CPY_K
 
         // xxx_stage: point to current read stage tensor
-        int read_stage = smem_pipe_read.index();
-        auto tCsA_stage   = tCsA(_,_,_,read_stage);
-        auto tCsB_stage   = tCsB(_,_,_,read_stage);
-        auto tCsSFA_stage = tCsSFA(_,_,_,read_stage);
-        auto tCsSFB_stage = tCsSFB(_,_,_,read_stage);
+        int read_stage = mainloop_smem_pipe_read.index();
+        auto tDsA_stage   = tDsA(_,_,_,read_stage);
+        auto tDsB_stage   = tDsB(_,_,_,read_stage);
+        auto tDsSFA_stage = tDsSFA(_,_,_,read_stage);
+        auto tDsSFB_stage = tDsSFB(_,_,_,read_stage);
 
 /*        cutlass::arch::NamedBarrier::sync(
                 thr_size(tiled_mma), cutlass::arch::ReservedNamedBarriers::Sm120MainloopBarrier);*/
-        pipeline.consumer_wait(smem_pipe_read);
+        mainloop_pipeline.consumer_wait(mainloop_smem_pipe_read);
+
         auto fp4_shift = [&](int k_block)
         {
             using MMAOp = typename MMA::MMA_Op;
-            FP4Shift::fp4_shift_A(MMAOp{}, tCrA_copy_view(_, _, k_block));
-            FP4Shift::fp4_shift_B(MMAOp{}, tCrB_copy_view(_, _, k_block));
+            FP4Shift::fp4_shift_A(MMAOp{}, tDrA_copy_view(_, _, k_block));
+            FP4Shift::fp4_shift_B(MMAOp{}, tDrB_copy_view(_, _, k_block));
         };
-        // Load the first block to reg before start
-        copy(smem_tiled_copy_A, tCsA_stage(_, _, 0), tCrA_copy_view(_, _, 0));
-        copy(smem_tiled_copy_B, tCsB_stage(_, _, 0), tCrB_copy_view(_, _, 0));
-        fp4_shift(0);
-        copy(tCsSFA_stage(_, _, 0), tCrSFA_copy_view(_, _, 0));
-        copy(tCsSFB_stage(_, _, 0), tCrSFB_copy_view(_, _, 0));
 
-        auto const num_k_block = size<2>(tCrA);        // MMA_K
+        auto load_block = [&](int k_block)
+        {
+            copy(smem_tiled_copy_A, tDsA_stage(_, _, k_block), tDrA_copy_view(_, _, k_block));
+            copy(smem_tiled_copy_B, tDsB_stage(_, _, k_block), tDrB_copy_view(_, _, k_block));
+            fp4_shift(k_block);
+            copy(tDsSFA_stage(_, _, k_block), tDrSFA_copy_view(_, _, k_block));
+            copy(tDsSFB_stage(_, _, k_block), tDrSFB_copy_view(_, _, k_block));
+        };
+        
+        // Load the first block to reg before start
+        copy(smem_tiled_copy_A, tDsA_stage(_, _, 0), tDrA_copy_view(_, _, 0));
+        copy(smem_tiled_copy_B, tDsB_stage(_, _, 0), tDrB_copy_view(_, _, 0));
+        fp4_shift(0);
+        copy(tDsSFA_stage(_, _, 0), tDrSFA_copy_view(_, _, 0));
+        copy(tDsSFB_stage(_, _, 0), tDrSFB_copy_view(_, _, 0));
+
+        auto const num_k_block = size<2>(tDrA);        // MMA_K
 
         for (int k_tile = 0; k_tile < num_k_tile; k_tile++) {
 
@@ -460,66 +505,72 @@ gemm_device_multistage_warpspecialized(__grid_constant__ const TmaLoadA tma_load
                     cutlass::arch::NamedBarrier::sync(
                             thr_size(tiled_mma), cutlass::arch::ReservedNamedBarriers::Sm120MainloopBarrier);
                     // release current read buffer
-                    pipeline.consumer_release(smem_pipe_read);
+                    mainloop_pipeline.consumer_release(mainloop_smem_pipe_read);
                     //  not the last tile, preload the next tile's first block
                     if(k_tile < num_k_tile - 1)
                     {
-                        ++smem_pipe_read;
+                        ++mainloop_smem_pipe_read;
                         // Read next tile
-                        read_stage = smem_pipe_read.index();
-                        tCsA_stage = tCsA(_, _, _, read_stage);
-                        tCsB_stage = tCsB(_, _, _, read_stage);
-                        tCsSFA_stage = tCsSFA(_, _, _, read_stage);
-                        tCsSFB_stage = tCsSFB(_, _, _, read_stage);
+                        read_stage = mainloop_smem_pipe_read.index();
+                        tDsA_stage = tDsA(_, _, _, read_stage);
+                        tDsB_stage = tDsB(_, _, _, read_stage);
+                        tDsSFA_stage = tDsSFA(_, _, _, read_stage);
+                        tDsSFB_stage = tDsSFB(_, _, _, read_stage);
 
                         // Make sure the next tile's data has arrived
-                        pipeline.consumer_wait(smem_pipe_read);
+                        mainloop_pipeline.consumer_wait(mainloop_smem_pipe_read);
                     }
                 }
-                if(0 && warp_group_thread_idx == 0)
-                {
-                    print("A Befor:\n"); print_tensor(tCrA_copy_view(_, _, k_block_next));
-                    print("B Befor:\n"); print_tensor(tCrB_copy_view(_, _, k_block_next));
-                }
-                // copy the next block
-                copy(smem_tiled_copy_A, tCsA_stage(_, _, k_block_next), tCrA_copy_view(_, _, k_block_next));
-                copy(smem_tiled_copy_B, tCsB_stage(_, _, k_block_next), tCrB_copy_view(_, _, k_block_next));
-                fp4_shift(k_block_next);
-                copy(tCsSFA_stage(_, _, k_block_next), tCrSFA_copy_view(_, _, k_block_next));
-                copy(tCsSFB_stage(_, _, k_block_next), tCrSFB_copy_view(_, _, k_block_next));
-                if(0 && warp_group_thread_idx == 0)
-                {
-                    print("A After:\n"); print_tensor(tCrA_copy_view(_, _, k_block_next));
-                    print("B After:\n"); print_tensor(tCrB_copy_view(_, _, k_block_next));
-                }
-                
-                // auto tCrA_shift = recast<uint32_t>(tCrA(_, _, k_block));
-                // auto tCrB_shift = recast<uint32_t>(tCrB(_, _, k_block));
-                // for(int i=0; i < size(tCrA_shift); i++) tCrA_shift(i) <<= 2;
-                // for(int i=0; i < size(tCrB_shift); i++) tCrB_shift(i) <<= 2;
-                
 
+                // copy the next block
+                copy(smem_tiled_copy_A, tDsA_stage(_, _, k_block_next), tDrA_copy_view(_, _, k_block_next));
+                copy(smem_tiled_copy_B, tDsB_stage(_, _, k_block_next), tDrB_copy_view(_, _, k_block_next));
+                fp4_shift(k_block_next);
+                copy(tDsSFA_stage(_, _, k_block_next), tDrSFA_copy_view(_, _, k_block_next));
+                copy(tDsSFB_stage(_, _, k_block_next), tDrSFB_copy_view(_, _, k_block_next));
+                
                 //gemm
                 gemm(tiled_mma,
-                     make_zip_tensor(tCrA(_, _, k_block), tCrSFA(_, _, k_block)),
-                     make_zip_tensor(tCrB(_, _, k_block), tCrSFB(_, _, k_block)),
-                     tCrC);
+                     make_zip_tensor(tDrA(_, _, k_block), tDrSFA(_, _, k_block)),
+                     make_zip_tensor(tDrB(_, _, k_block), tDrSFB(_, _, k_block)),
+                     tDrD);
             }
 
         }
-        using ElementC = typename EpilogueSharedStorage::TypeC;
-        cutlass::NumericConverter<ElementC, typename MMA::ValTypeC> converterC;
-        auto tCrC_copy_view_D = make_tensor<ElementC>(layout(tCrC_copy_view));
-        for(int i = 0; i < size(tCrC_copy_view_D); i++)
+
+
+        // Epilogue
+
+        epilogue_pipeline.consumer_wait(epilogue_smem_pipe_read);
+
+        // C: S -> R
+        auto smem_tiled_copy_C = make_tiled_copy_C(SmemCopyAtomC{}, tiled_mma);
+        auto smem_thr_copy_C = smem_tiled_copy_C.get_thread_slice(warp_group_thread_idx);
+        Tensor tCsC = smem_thr_copy_C.partition_S(sC);
+        Tensor tCrC = make_tensor<ElementC>(layout(tDrD));
+        Tensor tCrC_copy_view = smem_thr_copy_C.retile_D(tCrC);
+        copy(smem_tiled_copy_C, tCsC, tCrC_copy_view);
+
+        cutlass::NumericConverter<ElementD, typename MMA::ValTypeD> converterD;
+        Tensor tDrD_merge = make_tensor<ElementD>(layout(tDrD));
+        for(int i = 0; i < size(tDrD_merge); i++)
         {
-            // convert accumulator from float to bfloat16
-            tCrC_copy_view_D(i) = converterC(tCrC_copy_view(i));
+            // convert accumulator from 'float' to 'bfloat16' and accumulating
+            tDrD_merge(i) = converterD(tDrD(i)) + tCrC(i);
         }
+
 
         //Epilogue writeback
 
+        // D: R -> S
+        auto smem_tiled_copy_D = make_tiled_copy_C(SmemCopyAtomD{}, tiled_mma);
+        auto smem_thr_copy_D = smem_tiled_copy_D.get_thread_slice(warp_group_thread_idx);
+        Tensor tDrD_copy_view = smem_thr_copy_D.retile_S(tDrD_merge); // replace with tDrD_merge
+        Tensor tDsD_r2s = smem_thr_copy_D.partition_D(sD);
+
+        
         // step 1: Copy from register to shared memory
-        copy(smem_tiled_copy_C, tCrC_copy_view_D, tCsC_r2s);
+        copy(smem_tiled_copy_D, tDrD_copy_view, tDsD_r2s);
 
         // async proxy fence: make sure the shared memory writing is visible to TMA
         cutlass::arch::fence_view_async_shared();
@@ -529,7 +580,11 @@ gemm_device_multistage_warpspecialized(__grid_constant__ const TmaLoadA tma_load
         // step 2: Launch TMA Store
         if(warp_group_thread_idx == 0)
         {
-            copy(tma_store_c, tCsC_s2g, tCgC_s2g);
+            // D: S -> G
+            auto block_tma_d = tma_store_d.get_slice(0);
+            Tensor tDsD_s2g = block_tma_d.partition_S(sD);
+            Tensor tDgD_s2g = block_tma_d.partition_D(gD);
+            copy(tma_store_d, tDsD_s2g, tDgD_s2g);
         }
 
     }
