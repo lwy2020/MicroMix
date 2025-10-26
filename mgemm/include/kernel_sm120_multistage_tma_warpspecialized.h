@@ -406,47 +406,6 @@ gemm_device_multistage_warpspecialized(__grid_constant__ const TmaLoadA tma_load
         Tensor tDrSFB_copy_view = smem_thr_copy_SFB.retile_D(tDrSFB);     // (CPY,CPY_N,CPY_K)
 
 
-
-        // if(0 && warp_group_thread_idx == 0)
-        // {
-        //     print("gA:      "); print(gA); print('\n');
-        //     print("gB:      "); print(gB); print('\n');
-        //     print("gSFA:    "); print(gSFA); print('\n');
-        //     print("gSFB:    "); print(gSFB); print('\n');
-        //     print('\n');
-
-        //     print("sA:      "); print(sA); print('\n');
-        //     print("sB:      "); print(sB); print('\n');
-        //     print("sSFA:    "); print(sSFA); print('\n');
-        //     print("sSFB:    "); print(sSFB); print('\n');
-        //     print('\n');
-
-        //     print("tCsA:    "); print(tCsA); print('\n');
-        //     print("tCsB:    "); print(tCsB); print('\n');
-        //     print("tCsSFA:  "); print(tCsSFA); print('\n');
-        //     print("tCsSFB:  "); print(tCsSFB); print('\n');
-        //     print('\n');
-
-        //     print("tCrA_copy_view:    "); print(tCrA_copy_view); print('\n');
-        //     print("tCrB_copy_view:    "); print(tCrB_copy_view); print('\n');
-        //     print("tCrSFA_copy_view:  "); print(tCrSFA_copy_view); print('\n');
-        //     print("tCrSFB_copy_view:  "); print(tCrSFB_copy_view); print('\n');
-        //     print('\n');
-
-        //     print("tCrA:    "); print(tCrA); print('\n');
-        //     print("tCrB:    "); print(tCrB); print('\n');
-        //     print("tCrC:    "); print(tCrC); print('\n');
-        //     print("tCrSFA:  "); print(tCrSFA); print('\n');
-        //     print("tCrSFB:  "); print(tCrSFB); print('\n');
-        //     print('\n');
-        // }
-/*        if (warp_group_thread_idx == 0) {
-            print_latex(smem_tiled_copy_A);
-            print_latex(smem_tiled_copy_B);
-            print_latex(smem_tiled_copy_SFA);
-            print_latex(smem_tiled_copy_SFB);
-            print_latex(smem_tiled_copy_D);
-        }*/
         CUTE_STATIC_ASSERT_V(size<1>(tDsA) == size<1>(tDrA_copy_view));      // CPY_M
         CUTE_STATIC_ASSERT_V(size<2>(tDsA) == size<2>(tDrA_copy_view));      // CPY_K
         CUTE_STATIC_ASSERT_V(size<1>(tDrA) == size<1>(tDrD));                // MMA_M
@@ -467,32 +426,24 @@ gemm_device_multistage_warpspecialized(__grid_constant__ const TmaLoadA tma_load
         auto tDsSFA_stage = tDsSFA(_,_,_,read_stage);
         auto tDsSFB_stage = tDsSFB(_,_,_,read_stage);
 
-/*        cutlass::arch::NamedBarrier::sync(
-                thr_size(tiled_mma), cutlass::arch::ReservedNamedBarriers::Sm120MainloopBarrier);*/
         mainloop_pipeline.consumer_wait(mainloop_smem_pipe_read);
 
-        auto fp4_shift = [&](int k_block)
-        {
-            using MMAOp = typename MMA::MMA_Op;
-            FP4Shift::fp4_shift_A(MMAOp{}, tDrA_copy_view(_, _, k_block));
-            FP4Shift::fp4_shift_B(MMAOp{}, tDrB_copy_view(_, _, k_block));
-        };
 
         auto load_block = [&](int k_block)
         {
             copy(smem_tiled_copy_A, tDsA_stage(_, _, k_block), tDrA_copy_view(_, _, k_block));
             copy(smem_tiled_copy_B, tDsB_stage(_, _, k_block), tDrB_copy_view(_, _, k_block));
-            fp4_shift(k_block);
+
+            using MMAOp = typename MMA::MMA_Op;
+            FP4Shift::fp4_shift_A(MMAOp{}, tDrA_copy_view(_, _, k_block));
+            FP4Shift::fp4_shift_B(MMAOp{}, tDrB_copy_view(_, _, k_block));
+
             copy(tDsSFA_stage(_, _, k_block), tDrSFA_copy_view(_, _, k_block));
             copy(tDsSFB_stage(_, _, k_block), tDrSFB_copy_view(_, _, k_block));
         };
         
         // Load the first block to reg before start
-        copy(smem_tiled_copy_A, tDsA_stage(_, _, 0), tDrA_copy_view(_, _, 0));
-        copy(smem_tiled_copy_B, tDsB_stage(_, _, 0), tDrB_copy_view(_, _, 0));
-        fp4_shift(0);
-        copy(tDsSFA_stage(_, _, 0), tDrSFA_copy_view(_, _, 0));
-        copy(tDsSFB_stage(_, _, 0), tDrSFB_copy_view(_, _, 0));
+        load_block(0);
 
         auto const num_k_block = size<2>(tDrA);        // MMA_K
 
@@ -523,11 +474,7 @@ gemm_device_multistage_warpspecialized(__grid_constant__ const TmaLoadA tma_load
                 }
 
                 // copy the next block
-                copy(smem_tiled_copy_A, tDsA_stage(_, _, k_block_next), tDrA_copy_view(_, _, k_block_next));
-                copy(smem_tiled_copy_B, tDsB_stage(_, _, k_block_next), tDrB_copy_view(_, _, k_block_next));
-                fp4_shift(k_block_next);
-                copy(tDsSFA_stage(_, _, k_block_next), tDrSFA_copy_view(_, _, k_block_next));
-                copy(tDsSFB_stage(_, _, k_block_next), tDrSFB_copy_view(_, _, k_block_next));
+                load_block(k_block_next);
                 
                 //gemm
                 gemm(tiled_mma,
@@ -556,7 +503,8 @@ gemm_device_multistage_warpspecialized(__grid_constant__ const TmaLoadA tma_load
         for(int i = 0; i < size(tDrD_merge); i++)
         {
             // convert accumulator from 'float' to 'bfloat16' and accumulating
-            tDrD_merge(i) = converterD(tDrD(i)) + tCrC(i);
+            // D <- D + C
+            tDrD_merge(i) = converterD(tDrD(i) + tCrC(i));    
         }
 
 
@@ -586,7 +534,16 @@ gemm_device_multistage_warpspecialized(__grid_constant__ const TmaLoadA tma_load
             Tensor tDgD_s2g = block_tma_d.partition_D(gD);
             copy(tma_store_d, tDsD_s2g, tDgD_s2g);
         }
-
+        
+        // For debug
+        // if (warp_group_thread_idx == 0) {
+            // print_latex(smem_tiled_copy_A);
+            // print_latex(smem_tiled_copy_B);
+            // print_latex(smem_tiled_copy_SFA);
+            // print_latex(smem_tiled_copy_SFB);
+            // print_latex(smem_tiled_copy_C);
+            // print_latex(smem_tiled_copy_D);
+        // }
     }
 
 }

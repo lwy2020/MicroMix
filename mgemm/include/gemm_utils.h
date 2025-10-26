@@ -3,6 +3,45 @@
 #include <cuda.h>
 #include <cuda_runtime.h>
 #include <stdio.h>
+#include "cutlass/numeric_conversion.h"
+
+template <typename T>
+void initialize_matrix(T* data, uint32_t size, float val)
+{
+    cutlass::NumericConverter<T, float, cutlass::FloatRoundStyle::round_to_nearest> converter;
+    for (int i = 0; i < size; ++i) {
+        data[i] = converter(val);
+    }
+}
+template <typename T>
+void initialize_matrix_random(T* data, uint32_t size) {
+
+    cutlass::NumericConverter<T, float, cutlass::FloatRoundStyle::round_to_nearest> converter;
+
+    float range = 1.0f;
+
+    // 针对不同精度选择不同动态范围
+    if constexpr (std::is_same_v<T, cutlass::float_e2m1_t>) {
+        // e2m1: [-2, 2]
+        range = 1.5f;
+    } else if constexpr (std::is_same_v<T, cutlass::float_e3m2_t>) {
+        // e3m2: [-16, 16]
+        range = 4.0f;
+    } else if constexpr (std::is_same_v<T, cutlass::float_e4m3_t>) {
+        // e4m3: [-448, 448]
+        range = 40.0f;
+    } else {
+        // 默认 float32 范围
+        range = 1.0f;
+    }
+
+    for (int i = 0; i < size; ++i) {
+        float rnd = static_cast<float>(std::rand()) / RAND_MAX;  // [0, 1)
+        float val = (rnd * 2.0f - 1.0f) * range;                 // [-range, range]
+        data[i] = converter(val);
+    }
+}
+
 
 // For CuTe debug
 //#define DEBUG

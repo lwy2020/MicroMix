@@ -10,6 +10,8 @@
 #include <iostream>
 #include <functional>
 
+#include "gemm_utils.h"
+
 using namespace cute;
 
 using ElementC = cutlass::bfloat16_t;
@@ -19,7 +21,7 @@ using Type4 = cutlass::mx_float4_t<cutlass::float_e2m1_t>;
 using Type6 = cutlass::mx_float6_t<cutlass::float_e3m2_t>;
 using Type8 = cutlass::mx_float8_t<cutlass::float_e4m3_t>;
 
-constexpr int BM = 128;
+constexpr int BM = 32;
 constexpr int BN = BM;
 constexpr int BK = 128;
 constexpr int N_STAGE = (BM == 128) ? 2 : 8;
@@ -65,10 +67,10 @@ float perform_benchmark(
     cudaEvent_t start, stop;
     CHECK_CUDA(cudaEventCreate(&start));
     CHECK_CUDA(cudaEventCreate(&stop));
-
-    for (int it = 0; it < 20; ++it) {
-        kernel_to_run();
-    }
+    // warp up
+    // for (int it = 0; it < 20; ++it) {
+    //     kernel_to_run();
+    // }
 
     CHECK_CUDA(cudaEventRecord(start));
     for (int it = 0; it < timed_iters; ++it) {
@@ -117,11 +119,22 @@ void run_benchmark(
     cutlass::NumericConverter<typename ElementA::ScaleFactorType, float, cutlass::FloatRoundStyle::round_to_nearest> converterSFA;
     cutlass::NumericConverter<typename ElementB::ScaleFactorType, float, cutlass::FloatRoundStyle::round_to_nearest> converterSFB;
 
-    for (int i = 0; i < M * K; ++i) { A[i] = converterA(static_cast<float>(std::rand()) / RAND_MAX * 480.0f - 240.0f); }
-    for (int i = 0; i < N * K; ++i) { B[i] = converterB(static_cast<float>(std::rand()) / RAND_MAX * 480.0f - 240.0f); }
-    for (int i = 0; i < M * N; ++i) { C[i] = static_cast<ElementC>(0.f); }
-    for (size_t i = 0; i < szA; ++i) { scaleA[i] = converterSFA(static_cast<float>(std::rand()) / RAND_MAX * 255.0f); }
-    for (size_t i = 0; i < szB; ++i) { scaleB[i] = converterSFB(static_cast<float>(std::rand()) / RAND_MAX * 255.0f); }
+    initialize_matrix_random(A, M * K);
+    initialize_matrix_random(B, N * K);
+    initialize_matrix_random(C, M * N);
+    // initialize_matrix(A, M * K, 0.f);
+    // initialize_matrix(B, N * K, 0.f);
+    // initialize_matrix(C, M * N, 0.5f);
+
+    initialize_matrix_random(scaleA, szA);
+    initialize_matrix_random(scaleB, szB);
+
+
+    // for (int i = 0; i < M * K; ++i) { A[i] = converterA(static_cast<float>(std::rand()) / RAND_MAX * 480.0f - 240.0f); }
+    // for (int i = 0; i < N * K; ++i) { B[i] = converterB(static_cast<float>(std::rand()) / RAND_MAX * 480.0f - 240.0f); }
+    // for (int i = 0; i < M * N; ++i) { C[i] = static_cast<ElementC>(static_cast<float>(std::rand()) / RAND_MAX * 480.0f - 240.0f); }
+    // for (size_t i = 0; i < szA; ++i) { scaleA[i] = converterSFA(static_cast<float>(std::rand()) / RAND_MAX * 255.0f); }
+    // for (size_t i = 0; i < szB; ++i) { scaleB[i] = converterSFB(static_cast<float>(std::rand()) / RAND_MAX * 255.0f); }
 
     typename ElementA::DataType *A_d;
     typename ElementB::DataType *B_d;
