@@ -385,10 +385,11 @@ void run_activate_bf16_mixed(
     Tensor f8scale_tensor = cute::make_tensor(d_outlier_scale, filter_zeros(outlier::get_layoutSFA(seq_len, KO)));
 
     // --- 设置启动配置 ---
+    const int max_grid_y = 65536/4;
     const int threads_per_block = 128; 
     const int groups_per_block = threads_per_block / THREADS_PER_GROUP;
     const int total_groups = hidden_dim / GROUP_SIZE;
-    dim3 grids((total_groups + groups_per_block - 1) / groups_per_block, seq_len);
+    dim3 grids((total_groups + groups_per_block - 1) / groups_per_block, std::min(max_grid_y, seq_len));
     dim3 blocks(threads_per_block);
 
     // --- 启动内核，传入 Tensor 对象 ---
@@ -427,10 +428,11 @@ void run_downproj_bf16_mixed(
     Tensor f8scale_tensor = cute::make_tensor(d_outlier_scale, filter_zeros(outlier::get_layoutSFB(out_features, KO)));
 
     // --- 设置启动配置 ---
+    const int max_grid_y = 65536/4;
     const int threads_per_block = 128; 
     const int groups_per_block = threads_per_block / THREADS_PER_GROUP;
     const int total_groups = hidden_dim / GROUP_SIZE;
-    dim3 grids((total_groups + groups_per_block - 1) / groups_per_block, out_features);
+    dim3 grids((total_groups + groups_per_block - 1) / groups_per_block, std::min(max_grid_y, out_features));
     dim3 blocks(threads_per_block);
 
     // --- 启动内核，传入 Tensor 对象 ---
