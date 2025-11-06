@@ -81,7 +81,6 @@ def run_decode(model, bsz, prefill_length, decode_steps):
     _cleanup()
     next_input = torch.tensor([[100] for _ in range (bsz)], dtype=torch.int32, device=device)
     def _decode_for_multiple_steps():
-        past_key_values.length = prefill_length
         for _ in range(decode_steps):
             model(next_input, past_key_values=past_key_values)
     return module_benchmark(_decode_for_multiple_steps)
