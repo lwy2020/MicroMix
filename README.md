@@ -47,7 +47,6 @@ python benchmarks/benchmark_e2e_micromix.py --model 'llama-3.1-8b' --batch_size 
 ```
 FP16 efficiency:
 ```bash
-pip install transformers==4.56.2
 python benchmarks/benchmark_e2e_fp16.py --model /PATH/TO/YOUR_MODEL --batch_size 8 --prefill_seq_len 2048
 ```
 INT8 efficiency:
