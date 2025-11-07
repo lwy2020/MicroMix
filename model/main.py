@@ -6,33 +6,28 @@ from parallel_utils import map_layers_to_multi_gpus
 from datautils import get_loaders
 from eval import *
 
+from lm_eval import tasks as lm_tasks
 from lm_eval import evaluator as lm_evaluator
 from lm_eval.tasks import TaskManager
 from lm_eval.utils import make_table
 from lm_eval.models.huggingface import HFLM
 
-import os
-import logging
-from datetime import datetime
 
 def get_llama(model):
-    import torch
     def skip(*args, **kwargs):
         pass
     torch.nn.init.kaiming_uniform_ = skip
     torch.nn.init.uniform_ = skip
     torch.nn.init.normal_ = skip
     from transformers import LlamaForCausalLM
+
+    from transformers import LlamaForCausalLM
     model = LlamaForCausalLM.from_pretrained(model, torch_dtype=torch.bfloat16)
-    # model.seqlen = 2048
+    model.seqlen = 2048
     return model
 
 def get_qwen(model):
-    import torch
-    def skip(*args, **kwargs):
-        pass
-    
-    from transformers import AutoModelForCausalLM, AutoTokenizer
+    from transformers import AutoModelForCausalLM
     model = AutoModelForCausalLM.from_pretrained(model, torch_dtype="auto")
    
     return model
@@ -96,7 +91,7 @@ if __name__ == '__main__':
        
     model.eval()
 
-    
+    import os
   
     index_filename = f'./saved/{model_name}_reorder_index_wikitext2_{args.act_sort_metric}.pt'
     p6_num_filename = f'./saved/{model_name}_p6_num_wikitext2_{args.act_sort_metric}.pt'
@@ -113,33 +108,16 @@ if __name__ == '__main__':
   
     print("Reordering model...")
     model = reorder_model_func(
-        model, device=DEV, kv_cache=args.kv_cache, reorder_index=reorder_index, p8_nums=p8_nums, p6_nums=p6_nums
+        model, device='cuda:0', kv_cache=args.kv_cache, reorder_index=reorder_index, p8_nums=p8_nums, p6_nums=p6_nums
     )
-
-
+    model.to('cuda:0')
     print(model)
   
-    
- 
-    from transformers import AutoTokenizer
     lm = HFLM(model, batch_size="auto")
-
     lm.model.eval()
-    for param in lm.model.parameters():
-        param.requires_grad = False
-
-    map_layers_to_multi_gpus(lm.model.model.layers)
-    input_device = lm.model.model.layers[0].device
-    output_device = lm.model.model.layers[-1].device
-    assert input_device == output_device
-    lm._device = input_device
-    lm.model.model.embed_tokens.to(input_device)
-    lm.model.model.norm.to(output_device)
-    lm.model.lm_head.to(output_device)
-
         
     if args.eval_ppl:
-        datasets = ['wikitext2']
+        datasets = ['wikitext2', 'c4']
 
         for dataset in datasets:
             dataloader, testloader = get_loaders(
@@ -154,6 +132,7 @@ if __name__ == '__main__':
     
             
     if args.tasks is not None:
+        task_manager = TaskManager()
         task_names = args.tasks.split(',')
 
         results = lm_evaluator.simple_evaluate(
@@ -166,8 +145,9 @@ if __name__ == '__main__':
 
         table_results = make_table(results)
         print(table_results)
-        
-        os.makedirs("./results", exist_ok=True)
+        import logging
+        from datetime import datetime
+
         log_filename = f"./results/log_{model_name}_{args.tasks}_{datetime.now().strftime('%Y%m%d')}.log"
         logging.basicConfig(
                             filename=log_filename,
