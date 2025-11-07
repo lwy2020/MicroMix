@@ -210,16 +210,6 @@ class QLlamaAttention(nn.Module):
                     dropout_p= 0.0,
                     is_causal=True
                 ).contiguous()
-        
-            # attn_output, attn_weights = flash_attention_forward(
-            #     self,
-            #     query_states,
-            #     key_states,
-            #     value_states,
-            #     attention_mask,
-            #     dropout=0.0,
-            #     scaling=self.scaling,
-            # ).contiguous()
         else:
             attn_output = cache_out(query_states).contiguous()
         
