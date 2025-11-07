@@ -50,17 +50,19 @@ def module_benchmark(module):
 
 
 
+
 def get_model_int8(name):
-    from transformers import AutoModelForCausalLM
+    import torch
+    from transformers import AutoModelForCausalLM, BitsAndBytesConfig
     model = AutoModelForCausalLM.from_pretrained(
         name,
-        device_map='auto',
-        load_in_8bit=True,  # 启用8位量化
+        load_in_8bit=True,
+        quantization_config=None,
         torch_dtype=torch.bfloat16,
-        quantization_config=None  # 对于int8，通常不需要额外配置
+        trust_remote_code=True,
     )
+    
     return model
-
 
 
 def run_prefill(model, bsz, prefill_length):
