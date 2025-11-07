@@ -109,15 +109,13 @@ def run_prefill(model, bsz, prefill_length):
    
     return module_benchmark(_prefill)
 
-def run_decode(model, bsz, prefill_length, decode_steps):
+def run_e2e(model, bsz, prefill_length, decode_steps):
     device = model.device
     test_input = torch.randint(100, 200, (bsz, prefill_length), dtype=torch.int32, device=device)
-    model._expected_max_length = prefill_length + decode_steps
-    past_key_value = model(test_input)
-    # past_key_values = out.past_key_values
-    _cleanup()
     next_input = torch.tensor([[100] for _ in range (bsz)], dtype=torch.int32, device=device)
     def _decode_for_multiple_steps():
+        model._expected_max_length = prefill_length + decode_steps
+        past_key_value = model(test_input)
         past_key_value.length = prefill_length
         for _ in range(decode_steps):
             model(next_input, past_key_value=past_key_value)
@@ -131,9 +129,9 @@ def run_all_for_model(model, bsz, prefill, decode):
         _cleanup()
         return time_prefill, memory_prefill
     else:
-        time_decode, memory_decode = run_decode(model, bsz, prefill, decode)
+        time_e2e, memory_e2e = run_e2e(model, bsz, prefill, decode)
         _cleanup()
-        return time_decode, memory_decode
+        return time_e2e, memory_e2e
 
 def benchmark(args):
     model = get_model_quantized(args.model, MODEL_CFGS[args.model])
