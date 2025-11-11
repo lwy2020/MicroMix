@@ -12,7 +12,6 @@ from transformers.models.llama.modeling_llama import (ACT2FN,
 )
 
 from transformers import DynamicCache
-import flashinfer
 
 import sys
 sys.path.append('./mgemm/build/')
