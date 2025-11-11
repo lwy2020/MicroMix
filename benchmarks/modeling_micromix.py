@@ -11,7 +11,7 @@ from transformers.models.llama.modeling_llama import (ACT2FN,
     LlamaRotaryEmbedding
 )
 
-# from transformers.integrations.flash_attention import flash_attention_forward
+from transformers import DynamicCache
 import flashinfer
 
 import sys
@@ -185,33 +185,26 @@ class QLlamaAttention(nn.Module):
         bsz, q_len = hidden_states[-2], hidden_states[-1]
     
     
-        query_states = self.q_proj(hidden_states).view(bsz, q_len, self.num_heads, self.head_dim).contiguous()
-        key_states = self.k_proj(hidden_states).view(bsz, q_len, self.num_heads, self.head_dim).contiguous()
-        value_states = self.v_proj(hidden_states).view(bsz, q_len, self.num_heads, self.head_dim).contiguous()
+        query_states = self.q_proj(hidden_states).view(bsz, self.num_heads, q_len, self.head_dim).contiguous()
+        key_states = self.k_proj(hidden_states).view(bsz, self.num_heads, q_len, self.head_dim).contiguous()
+        value_states = self.v_proj(hidden_states).view(bsz, self.num_heads, q_len, self.head_dim).contiguous()
         
-        kv_seq_len = key_states.shape[1]
-        kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
         cos, sin = self.rotary_emb(value_states, position_ids=position_ids)
-        query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids, unsqueeze_dim=2)
-
-        past_key_value = getattr(self, "past_key_value", past_key_value)
-        assert past_key_value is not None
-        # sin and cos are specific to RoPE models; position_ids needed for the static cache
+        query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
         
-        cache_kwargs = {"sin": sin, "cos": cos}
-        cache_out = past_key_value.update(key_states, value_states, self.layer_idx, cache_kwargs)
-        if isinstance(cache_out, tuple):
-            key_states, value_states = cache_out
-            attn_output = torch.nn.functional.scaled_dot_product_attention(
-                    query_states,
-                    key_states,
-                    value_states,
-                    attn_mask=None,
-                    dropout_p= 0.0,
-                    is_causal=True
-                ).contiguous()
-        else:
-            attn_output = cache_out(query_states).contiguous()
+        if past_key_value is not None:
+            cache_kwargs = {"sin": sin, "cos": cos}
+            key_states, value_states = past_key_value.update(key_states, value_states, self.layer_idx, cache_kwargs)
+
+        attn_output = torch.nn.functional.scaled_dot_product_attention(
+            query_states,
+            key_states,
+            value_states,
+            attn_mask=None,
+            dropout_p=0.0,
+            is_causal=True
+        ).contiguous()
+        
         
         attn_output = attn_output.reshape(bsz*q_len, -1).contiguous()
 
@@ -356,6 +349,8 @@ class FP16LlamaRMSNorm(nn.Module):
         variance = hidden_states.pow(2).mean(-1, keepdim=True)
         hidden_states = hidden_states * torch.rsqrt(variance + self.variance_epsilon)
         return self.weight * hidden_states.to(input_dtype)
+
+
         
 class LlamaModel(LlamaPreTrainedModel):
 
@@ -410,12 +405,7 @@ class LlamaModel(LlamaPreTrainedModel):
         position_ids=None
       ) -> torch.Tensor:
         if past_key_value is None:
-            max_length = input_ids.shape[1] * 2
-            past_key_value = self.build_cache(
-                input_ids.shape[0], 
-                page_size=max_length,
-                max_length=max_length
-            )
+            past_key_value = past_key_values = DynamicCache()
         torch.cuda.nvtx.range_push(f"embed")
         hidden_states = self.embed_tokens(input_ids)
         torch.cuda.nvtx.range_pop()
@@ -465,3 +455,4 @@ class LlamaForCausalLM(LlamaModel):
         torch.cuda.nvtx.range_pop()
         torch.cuda.nvtx.range_pop()
         return past_key_value
+
