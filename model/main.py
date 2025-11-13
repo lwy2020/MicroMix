@@ -1,12 +1,11 @@
 import torch
-from collections import defaultdict
+import os
 
 from model_utils import reorder_model_llama, reorder_model_qwen, reorder_model_mixtral
 from parallel_utils import map_layers_to_multi_gpus
 from datautils import get_loaders
 from eval import *
 
-from lm_eval import tasks as lm_tasks
 from lm_eval import evaluator as lm_evaluator
 from lm_eval.tasks import TaskManager
 from lm_eval.utils import make_table
@@ -175,6 +174,8 @@ if __name__ == '__main__':
         import logging
         from datetime import datetime
 
+        if not os.path.exists("./results/"):
+            os.makedirs("./results/")
         log_filename = f"./results/log_{model_name}_{args.tasks}_{datetime.now().strftime('%Y%m%d')}.log"
         logging.basicConfig(
                             filename=log_filename,
