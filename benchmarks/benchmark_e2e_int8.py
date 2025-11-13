@@ -50,17 +50,19 @@ def module_benchmark(module):
 
 
 
+
 def get_model_int8(name):
-    from transformers import AutoModelForCausalLM
+    import torch
+    from transformers import AutoModelForCausalLM, BitsAndBytesConfig
     model = AutoModelForCausalLM.from_pretrained(
         name,
-        device_map='auto',
-        load_in_8bit=True,  # 启用8位量化
+        load_in_8bit=True,
+        quantization_config=None,
         torch_dtype=torch.bfloat16,
-        quantization_config=None  # 对于int8，通常不需要额外配置
+        trust_remote_code=True,
     )
+    
     return model
-
 
 
 def run_prefill(model, bsz, prefill_length):
@@ -71,34 +73,28 @@ def run_prefill(model, bsz, prefill_length):
    
     return module_benchmark(_prefill)
 
-def run_decode(model, bsz, prefill_length, decode_steps):
+def run_e2e(model, bsz, prefill_length, decode_steps):
     device = model.device
     test_input = torch.randint(100, 200, (bsz, prefill_length), dtype=torch.int32, device=device)
-    model._expected_max_length = prefill_length + decode_steps
-    past_key_values = model(test_input)
-    # past_key_values = out.past_key_values
-    del out
-    _cleanup()
     next_input = torch.tensor([[100] for _ in range (bsz)], dtype=torch.int32, device=device)
     def _decode_for_multiple_steps():
-        past_key_values.length = prefill_length
+        model._expected_max_length = prefill_length + decode_steps
+        out = model(test_input)
         for _ in range(decode_steps):
-            model(next_input, past_key_values=past_key_values)
+            model(next_input, past_key_values=out.past_key_values)
     return module_benchmark(_decode_for_multiple_steps)
-
-def _wait_for_input():
-    print("Press enter")
-    input()
 
 @torch.no_grad
 def run_all_for_model(model, bsz, prefill, decode):
-    # model = model.cuda()
     model.eval()
-    time_prefill, memory_prefill = run_prefill(model, bsz, prefill)
-    
-    _cleanup()
-    return time_prefill, memory_prefill
-
+    if decode is None:
+        time_prefill, memory_prefill = run_prefill(model, bsz, prefill)
+        _cleanup()
+        return time_prefill, memory_prefill
+    else:
+        time_e2e, memory_e2e = run_e2e(model, bsz, prefill, decode)
+        _cleanup()
+        return time_e2e, memory_e2e
 
 
 
@@ -111,7 +107,7 @@ def benchmark(args):
     del model
     _cleanup()
 
-    print(f"Prefill INT8 time: {np.mean(time_prefill):.3f} +- {1.96 * np.std(time_prefill):.3f}ms")
+    print(f"INT8 time: {np.mean(time_prefill):.3f} +- {1.96 * np.std(time_prefill):.3f}ms")
     print(f"INT8 memory: {np.mean(mem) / (1024 * 1024 * 1024):.3f}GB +- {1.96 * np.std(mem):.3f}")
     print('--------------')
 

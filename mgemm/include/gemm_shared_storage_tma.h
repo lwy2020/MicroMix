@@ -2,6 +2,7 @@
 #define SM120_BLOCKSCALED_GEMM_GEMM_SHARED_STORAGE_H
 #include "cutlass/cutlass.h"
 
+namespace TmaSmem{
 template<
         class SmemLayoutA, class SmemLayoutB, class SmemLayoutC, class SmemLayoutSFA, class SmemLayoutSFB,
         class SmemAllocTypeA, class SmemAllocTypeB, class ElementC, class ElementSF,
@@ -30,4 +31,5 @@ struct EpilogueSharedStorage {
         alignas(1024) cute::ArrayEngine<ElementD, cute::cosize_v<SmemLayoutD>> smem_D;
     } tensors;
 };
+}
 #endif //SM120_BLOCKSCALED_GEMM_GEMM_SHARED_STORAGE_H

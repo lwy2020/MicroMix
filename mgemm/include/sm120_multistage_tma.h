@@ -5,7 +5,7 @@
 #include "sm120_sf_layout.h"
 // #include "kernel_sm120_multistage_tma.h"
 #include "kernel_sm120_multistage_tma_warpspecialized.h"
-#include "gemm_shared_storage.h"
+#include "gemm_shared_storage_tma.h"
 
 using namespace cute;
 
@@ -17,7 +17,8 @@ gemm_host_tn(ElementA *ptr_A, ElementSF *ptr_SFA,
              ElementB *ptr_B, ElementSF *ptr_SFB,
              ElementC *ptr_C, 
              ElementD *ptr_D, 
-             int M, int N, int K) {
+             int M, int N, int K,
+             cudaStream_t stream = 0) {
 
     if (ptr_A == nullptr || ptr_B == nullptr ||
         ptr_C == nullptr || ptr_D == nullptr ||
@@ -176,12 +177,12 @@ gemm_host_tn(ElementA *ptr_A, ElementSF *ptr_SFA,
     using MainloopPipelineState = typename cutlass::PipelineState<N_STAGE>;
     using EpiloguePipelineState = typename cutlass::PipelineState<1>;
 
-    using MyMainloopSharedStorage = MainloopSharedStorage<
+    using MyMainloopSharedStorage = TmaSmem::MainloopSharedStorage<
             SmemLayoutA, SmemLayoutB, SmemLayoutC, SmemLayoutSFA, SmemLayoutSFB,
             SmemAllocTypeA, SmemAllocTypeB, ElementC, ElementSF,
             MainloopPipeline, EpiloguePipeline
     >;
-    using MyEpilogueSharedStorage = EpilogueSharedStorage<SmemLayoutD, ElementD>;
+    using MyEpilogueSharedStorage = TmaSmem::EpilogueSharedStorage<SmemLayoutD, ElementD>;
 
     static constexpr int MainloopSharedStorageSize = sizeof(MyMainloopSharedStorage);
     static constexpr int EpilogueSharedStorageSize = sizeof(MyEpilogueSharedStorage);
@@ -214,7 +215,7 @@ gemm_host_tn(ElementA *ptr_A, ElementSF *ptr_SFA,
                             cute::conditional_t<cute::is_same_v<ElementA, cutlass::float_e3m2_t>,
                                     cutlass::detail::float_e3m2_unpacksmem_t,
                                     uint_bit_t<sizeof_bits_v<ElementA>>>>>>;
-
+    print(sizeof_bits_v<TmaInternalElementA>);
     using TmaInternalElementB = cute::conditional_t<not isF8F6F4,
             ElementB,
             cute::conditional_t<cute::is_same_v<ElementB, cutlass::float_e2m1_t>,
@@ -299,13 +300,13 @@ gemm_host_tn(ElementA *ptr_A, ElementSF *ptr_SFA,
         checkCudaLastErrors();
 
         // Launch Kernel
-        kernel_ptr<<<gridDim, blockDim, SharedStorageSize>>>(tma_load_a, layout_A,
+        kernel_ptr<<<gridDim, blockDim, SharedStorageSize, stream>>>(tma_load_a, layout_A,
                                                              tma_load_b, layout_B,
                                                              tma_load_sfa, layout_SFA,
                                                              tma_load_sfb, layout_SFB,
                                                              tma_load_c, layout_C,
                                                              tma_store_d, layout_D);
-        cudaDeviceSynchronize();
+        // cudaDeviceSynchronize();
         checkCudaLastErrors();
     };
 

@@ -1,0 +1,1 @@
+nsys profile -w true -t cuda,nvtx,osrt,cudnn,cublas -s cpu -o nsight_report -f true -x true python benchmarks/benchmark_e2e_micromix.py --model 'llama-3.1-8b' --batch_size 8 --prefill_seq_len 2048 --decode_steps 8

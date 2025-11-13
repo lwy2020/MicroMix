@@ -173,7 +173,7 @@ void matmul_host_w4a4(
             SFB, layout_SFB   //When performing benchmark, please repalce it with "SFB, layout_SFB"
         },
         { // Epilogue arguments
-            {1.0, 1.0},
+            {1.0, 0.0},
             C, stride_C,
             D, stride_D
         }

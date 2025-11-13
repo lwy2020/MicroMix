@@ -226,12 +226,12 @@ def search_p4_p6_proportions(model, dataloader, device_, seqlen, reorder_index, 
     layers[0] = Catcher(layers[0])
 
     dataloader = torch.stack(dataloader, dim=0).squeeze(1)
-
+    model.to(device)
     try:
         model(torch.tensor(dataloader).to(device))
     except ValueError:
         pass
-
+    model.cpu()
     
     layers[0] = layers[0].module
     layers[0] = layers[0].cpu()

@@ -7,18 +7,18 @@
 #include <flashinfer.h>
 
 torch::Tensor matmul(
-        const torch::Tensor &AN,
-        const torch::Tensor &BN,
-        const torch::Tensor &AS,
-        const torch::Tensor &BS,
-        const torch::Tensor &AO,
-        const torch::Tensor &BO,
-        const torch::Tensor &SFAN,
-        const torch::Tensor &SFBN,
-        const torch::Tensor &SFAS,
-        const torch::Tensor &SFBS,
-        const torch::Tensor &SFAO,
-        const torch::Tensor &SFBO
+        torch::Tensor &AN,
+        torch::Tensor &BN,
+        torch::Tensor &AS,
+        torch::Tensor &BS,
+        torch::Tensor &AO,
+        torch::Tensor &BO,
+        torch::Tensor &SFAN,
+        torch::Tensor &SFBN,
+        torch::Tensor &SFAS,
+        torch::Tensor &SFBS,
+        torch::Tensor &SFAO,
+        torch::Tensor &SFBO
 )
 {
 
@@ -31,17 +31,40 @@ torch::Tensor matmul(
     auto C = torch::zeros({M, N}, torch::dtype(torch::kBFloat16).device(AN.device()));
 
     if (AS.size(1) == BS.size(1) && AO.size(1) == BO.size(1)) { // w4a4 w6a6 w8a8
-        matmul_host(
-            reinterpret_cast<cutlass::float_e2m1_t *>(AN.data_ptr<uint8_t>()), reinterpret_cast<cutlass::float_e2m1_t *>(BN.data_ptr<uint8_t>()),
-            reinterpret_cast<cutlass::float_e3m2_t *>(AS.data_ptr<uint8_t>()), reinterpret_cast<cutlass::float_e3m2_t *>(BS.data_ptr<uint8_t>()), 
-            reinterpret_cast<cutlass::float_e4m3_t *>(AO.data_ptr<uint8_t>()), reinterpret_cast<cutlass::float_e4m3_t *>(BO.data_ptr<uint8_t>()),
-            M, N,
-            KN, KS, KO,
-            (cutlass::bfloat16_t *)C.data_ptr<at::BFloat16>(), (cutlass::bfloat16_t *)C.data_ptr<at::BFloat16>(),
-            reinterpret_cast<cutlass::float_ue8m0_t *>(SFAN.data_ptr<uint8_t>()), reinterpret_cast<cutlass::float_ue8m0_t *>(SFBN.data_ptr<uint8_t>()),
-            reinterpret_cast<cutlass::float_ue8m0_t *>(SFAS.data_ptr<uint8_t>()), reinterpret_cast<cutlass::float_ue8m0_t *>(SFBS.data_ptr<uint8_t>()),
-            reinterpret_cast<cutlass::float_ue8m0_t *>(SFAO.data_ptr<uint8_t>()), reinterpret_cast<cutlass::float_ue8m0_t *>(SFBO.data_ptr<uint8_t>())
-        );
+        if(M < 128) //decode mode
+        {
+            // for fp6 kernel, A B should be unpack first
+            auto AB_unpack = torch::zeros({M + N, KS}, torch::dtype(torch::kByte).device(AN.device()));
+            auto ptr_A_fp6_unpack = AB_unpack.data_ptr<uint8_t>();
+            auto ptr_B_fp6_unpack = ptr_A_fp6_unpack + M * KS;
+
+            matmul_host_dev(
+                reinterpret_cast<cutlass::float_e2m1_t *>(AN.data_ptr<uint8_t>()), reinterpret_cast<cutlass::float_e2m1_t *>(BN.data_ptr<uint8_t>()),
+                reinterpret_cast<cutlass::float_e3m2_t *>(ptr_A_fp6_unpack), reinterpret_cast<cutlass::float_e3m2_t *>(ptr_B_fp6_unpack), 
+                reinterpret_cast<cutlass::float_e4m3_t *>(AO.data_ptr<uint8_t>()), reinterpret_cast<cutlass::float_e4m3_t *>(BO.data_ptr<uint8_t>()),
+                M, N,
+                KN, KS, KO,
+                (cutlass::bfloat16_t *)C.data_ptr<at::BFloat16>(), (cutlass::bfloat16_t *)C.data_ptr<at::BFloat16>(),
+                reinterpret_cast<cutlass::float_ue8m0_t *>(SFAN.data_ptr<uint8_t>()), reinterpret_cast<cutlass::float_ue8m0_t *>(SFBN.data_ptr<uint8_t>()),
+                reinterpret_cast<cutlass::float_ue8m0_t *>(SFAS.data_ptr<uint8_t>()), reinterpret_cast<cutlass::float_ue8m0_t *>(SFBS.data_ptr<uint8_t>()),
+                reinterpret_cast<cutlass::float_ue8m0_t *>(SFAO.data_ptr<uint8_t>()), reinterpret_cast<cutlass::float_ue8m0_t *>(SFBO.data_ptr<uint8_t>())
+            );
+        }
+        else // prefill mode, use cutlass
+        {
+            matmul_host(
+                reinterpret_cast<cutlass::float_e2m1_t *>(AN.data_ptr<uint8_t>()), reinterpret_cast<cutlass::float_e2m1_t *>(BN.data_ptr<uint8_t>()),
+                reinterpret_cast<cutlass::float_e3m2_t *>(AS.data_ptr<uint8_t>()), reinterpret_cast<cutlass::float_e3m2_t *>(BS.data_ptr<uint8_t>()), 
+                reinterpret_cast<cutlass::float_e4m3_t *>(AO.data_ptr<uint8_t>()), reinterpret_cast<cutlass::float_e4m3_t *>(BO.data_ptr<uint8_t>()),
+                M, N,
+                KN, KS, KO,
+                (cutlass::bfloat16_t *)C.data_ptr<at::BFloat16>(), (cutlass::bfloat16_t *)C.data_ptr<at::BFloat16>(),
+                reinterpret_cast<cutlass::float_ue8m0_t *>(SFAN.data_ptr<uint8_t>()), reinterpret_cast<cutlass::float_ue8m0_t *>(SFBN.data_ptr<uint8_t>()),
+                reinterpret_cast<cutlass::float_ue8m0_t *>(SFAS.data_ptr<uint8_t>()), reinterpret_cast<cutlass::float_ue8m0_t *>(SFBS.data_ptr<uint8_t>()),
+                reinterpret_cast<cutlass::float_ue8m0_t *>(SFAO.data_ptr<uint8_t>()), reinterpret_cast<cutlass::float_ue8m0_t *>(SFBO.data_ptr<uint8_t>())
+            );
+        }
+        
     }
     else { // w4a4 w4a6 w4a8
         matmul_w4_host(
@@ -983,8 +1006,225 @@ void append_kv_f16(torch::Tensor kv_data, torch::Tensor kv_param,
       page_size, batch_size);
 }
 
+class GemmGraphRunner {
+
+#define checkCuda(call) do { \
+    cudaError_t err = call; \
+    if (err != cudaSuccess) { \
+        throw std::runtime_error(cudaGetErrorString(err)); \
+    } \
+} while (0)
+
+private:
+    cudaStream_t stream;
+    cudaGraphExec_t graphExec;
+
+public:
+    GemmGraphRunner() : graphExec(nullptr) {
+        checkCuda(cudaStreamCreate(&stream));
+    }
+
+    ~GemmGraphRunner() {
+        if (graphExec) cudaGraphExecDestroy(graphExec);
+        cudaStreamDestroy(stream);
+    }
+
+    
+    torch::Tensor 
+    matmul_launch(
+        torch::Tensor &AN,
+        torch::Tensor &BN,
+        torch::Tensor &AS,
+        torch::Tensor &BS,
+        torch::Tensor &AO,
+        torch::Tensor &BO,
+        torch::Tensor &SFAN,
+        torch::Tensor &SFBN,
+        torch::Tensor &SFAS,
+        torch::Tensor &SFBS,
+        torch::Tensor &SFAO,
+        torch::Tensor &SFBO
+    ) {
+        uint32_t M = AN.size(0);
+        uint32_t N = BN.size(0);
+        uint32_t KN = AN.size(1) * 2;  // 4bit packing is on the columns
+        uint32_t KS = AS.size(1) * 4 / 3;  // 6bit packing is on the columns
+        uint32_t KO = AO.size(1) * 1;  // 8bit packing is on the columns
+        auto C = torch::zeros({M, N}, torch::dtype(torch::kBFloat16).device(AN.device()));
+        // printf("%d %d %d %d\n", M, N, C.size(0), C.size(1));
+        assert(C.size(0) == M && C.size(1) == N);
+        // printf("%d %d %d %d", M, N, C.size(0), C.size(1));
+        cudaGraph_t graph;
+        checkCuda(cudaStreamBeginCapture(stream, cudaStreamCaptureModeGlobal));
+        matmul_host_dev(
+            reinterpret_cast<cutlass::float_e2m1_t *>(AN.data_ptr<uint8_t>()), reinterpret_cast<cutlass::float_e2m1_t *>(BN.data_ptr<uint8_t>()),
+            reinterpret_cast<cutlass::float_e3m2_t *>(AS.data_ptr<uint8_t>()), reinterpret_cast<cutlass::float_e3m2_t *>(BS.data_ptr<uint8_t>()), 
+            reinterpret_cast<cutlass::float_e4m3_t *>(AO.data_ptr<uint8_t>()), reinterpret_cast<cutlass::float_e4m3_t *>(BO.data_ptr<uint8_t>()),
+            M, N,
+            KN, KS, KO,
+            (cutlass::bfloat16_t *)C.data_ptr<at::BFloat16>(), (cutlass::bfloat16_t *)C.data_ptr<at::BFloat16>(),
+            reinterpret_cast<cutlass::float_ue8m0_t *>(SFAN.data_ptr<uint8_t>()), reinterpret_cast<cutlass::float_ue8m0_t *>(SFBN.data_ptr<uint8_t>()),
+            reinterpret_cast<cutlass::float_ue8m0_t *>(SFAS.data_ptr<uint8_t>()), reinterpret_cast<cutlass::float_ue8m0_t *>(SFBS.data_ptr<uint8_t>()),
+            reinterpret_cast<cutlass::float_ue8m0_t *>(SFAO.data_ptr<uint8_t>()), reinterpret_cast<cutlass::float_ue8m0_t *>(SFBO.data_ptr<uint8_t>()),
+            stream
+        );
+
+        checkCuda(cudaStreamEndCapture(stream, &graph));
+
+        if (graphExec == nullptr) {
+            checkCuda(cudaGraphInstantiate(&graphExec, graph, nullptr, nullptr, 0));
+        } else {
+            checkCuda(cudaGraphExecUpdate(graphExec, graph, nullptr, nullptr));
+        }
+        checkCuda(cudaGraphDestroy(graph));
+        checkCuda(cudaGraphLaunch(graphExec, stream));
+        return C;
+    }
+
+    void synchronize() {
+        checkCuda(cudaStreamSynchronize(stream));
+    }
+};
+
+class MatmulGraphRunner {
+
+#define checkCuda(call) do { \
+    cudaError_t err = call; \
+    if (err != cudaSuccess) { \
+        throw std::runtime_error(cudaGetErrorString(err)); \
+    } \
+} while (0)
+
+private:
+    // 持久化的可执行图
+    cudaGraphExec_t graphExec_ = nullptr;
+    
+    // --- 持久化的张量 ---
+    // 这些张量在捕获时使用，它们的内存地址被图记住了
+    // 输入张量
+    torch::Tensor A_N_, B_N_, A_S_, B_S_, A_O_, B_O_;
+    torch::Tensor SFAN_, SFBN_, SFAS_, SFBS_, SFAO_, SFBO_;
+    
+    // 输出张量
+    torch::Tensor C_; 
+    
+    cudaStream_t stream_; // 确保使用同一个流
+
+public:
+    MatmulGraphRunner() {
+        checkCuda(cudaStreamCreate(&stream_));
+    }
+
+    ~MatmulGraphRunner() {
+        if (graphExec_ != nullptr) {
+            cudaGraphExecDestroy(graphExec_);
+        }
+    }
+
+    // 1. 初始化函数 (只在第一次调用时执行)
+    void initialize(
+        torch::Tensor &AN, torch::Tensor &BN,
+        torch::Tensor &AS, torch::Tensor &BS,
+        torch::Tensor &AO, torch::Tensor &BO,
+        torch::Tensor &SFAN, torch::Tensor &SFBN,
+        torch::Tensor &SFAS, torch::Tensor &SFBS,
+        torch::Tensor &SFAO, torch::Tensor &SFBO
+    ) {
+        if (graphExec_ != nullptr) return; // 防止重复初始化
+
+        // --- 1. 克隆输入张量以持久化 ---
+        // 我们需要保存这些张量，图会记住它们的 data_ptr()
+        A_N_ = AN.clone();
+        B_N_ = BN.clone();
+        A_S_ = AS.clone();
+        B_S_ = BS.clone();
+        A_O_ = AO.clone();
+        B_O_ = BO.clone();
+        SFAN_ = SFAN.clone();
+        SFBN_ = SFBN.clone();
+        SFAS_ = SFAS.clone();
+        SFBS_ = SFBS.clone();
+        SFAO_ = SFAO.clone();
+        SFBO_ = SFBO.clone();
+
+        // --- 2. 创建持久化的输出张量 ---
+        uint32_t M = AN.size(0);
+        uint32_t N = BN.size(0);
+        // *** 关键: C_ 也是持久化的 ***
+        C_ = torch::zeros({M, N}, torch::dtype(torch::kBFloat16).device(AN.device()));
+
+        // --- 3. 捕获 ---
+        cudaGraph_t graph;
+        checkCuda(cudaStreamBeginCapture(stream_, cudaStreamCaptureModeGlobal));
+
+        // *** 关键: 使用持久化的张量 (A_N_, B_N_, C_ ...) 进行捕获 ***
+        uint32_t KN = AN.size(1) * 2;
+        uint32_t KS = AS.size(1) * 4 / 3;
+        uint32_t KO = AO.size(1) * 1;
+
+        matmul_host_dev(
+            reinterpret_cast<cutlass::float_e2m1_t *>(AN.data_ptr<uint8_t>()), reinterpret_cast<cutlass::float_e2m1_t *>(BN.data_ptr<uint8_t>()),
+            reinterpret_cast<cutlass::float_e3m2_t *>(AS.data_ptr<uint8_t>()), reinterpret_cast<cutlass::float_e3m2_t *>(BS.data_ptr<uint8_t>()), 
+            reinterpret_cast<cutlass::float_e4m3_t *>(AO.data_ptr<uint8_t>()), reinterpret_cast<cutlass::float_e4m3_t *>(BO.data_ptr<uint8_t>()),
+            M, N,
+            KN, KS, KO,
+            (cutlass::bfloat16_t *)C_.data_ptr<at::BFloat16>(), (cutlass::bfloat16_t *)C_.data_ptr<at::BFloat16>(),
+            reinterpret_cast<cutlass::float_ue8m0_t *>(SFAN.data_ptr<uint8_t>()), reinterpret_cast<cutlass::float_ue8m0_t *>(SFBN.data_ptr<uint8_t>()),
+            reinterpret_cast<cutlass::float_ue8m0_t *>(SFAS.data_ptr<uint8_t>()), reinterpret_cast<cutlass::float_ue8m0_t *>(SFBS.data_ptr<uint8_t>()),
+            reinterpret_cast<cutlass::float_ue8m0_t *>(SFAO.data_ptr<uint8_t>()), reinterpret_cast<cutlass::float_ue8m0_t *>(SFBO.data_ptr<uint8_t>()),
+            stream_
+        );
+
+        checkCuda(cudaStreamEndCapture(stream_, &graph));
+
+        // --- 4. 实例化 ---
+        checkCuda(cudaGraphInstantiate(&graphExec_, graph, nullptr, nullptr, 0));
+        
+        // --- 5. 销毁临时图 ---
+        checkCuda(cudaGraphDestroy(graph));
+    }
 
 
+    // 2. 启动函数 (在热路径中反复调用)
+    torch::Tensor matmul_launch(
+        torch::Tensor &AN, torch::Tensor &BN,
+        torch::Tensor &AS, torch::Tensor &BS,
+        torch::Tensor &AO, torch::Tensor &BO,
+        torch::Tensor &SFAN, torch::Tensor &SFBN,
+        torch::Tensor &SFAS, torch::Tensor &SFBS,
+        torch::Tensor &SFAO, torch::Tensor &SFBO
+    ) {
+        // 第一次调用时自动初始化
+        if (graphExec_ == nullptr) {
+            initialize(AN, BN, AS, BS, AO, BO, SFAN, SFBN, SFAS, SFBS, SFAO, SFBO);
+        }
+
+        // --- 1. (关键) 拷贝新数据 ---
+        // 将新的输入数据拷贝到捕获时使用的张量内存中
+        // (这假定 M, N, K 等维度保持不变)
+        A_N_.copy_(AN);
+        B_N_.copy_(BN);
+        A_S_.copy_(AS);
+        B_S_.copy_(BS);
+        A_O_.copy_(AO);
+        B_O_.copy_(BO);
+        SFAN_.copy_(SFAN);
+        SFBN_.copy_(SFBN);
+        SFAS_.copy_(SFAS);
+        SFBS_.copy_(SFBS);
+        SFAO_.copy_(SFAO);
+        SFBO_.copy_(SFBO);
+
+        // --- 2. (关键) 启动图 ---
+        // 这几乎是零开销的
+        checkCuda(cudaGraphLaunch(graphExec_, stream_));
+
+        // --- 3. 返回结果 ---
+        // 图的计算结果在 C_ 中。
+        // 我们需要将它拷贝出来返回给调用者。
+        return C_.clone(); // 或者 C.copy_(C_) 如果 C 是作为参数传入的
+    }
+};
 //====== pybind ======
 
 #define DEFINE_pybind(name) m.def(#name, &name, #name);
@@ -1007,6 +1247,14 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m
           py::arg("SFAS"), py::arg("SFBS"),
           py::arg("SFAO"), py::arg("SFBO")
         );
+    py::class_<GemmGraphRunner>(m, "GemmGraphRunner")
+        .def(py::init<>())
+        .def("matmul_launch", &GemmGraphRunner::matmul_launch);
+
+    py::class_<MatmulGraphRunner>(m, "MatmulGraphRunner")
+        .def(py::init<>())
+        .def("matmul_launch", &MatmulGraphRunner::matmul_launch);
+
     m.def("test_function", []() { return "Hello from test_function!"; });
     m.def("reorder_quantize_x", &reorder_quantize_x,
           "Reorder and quantize activation",

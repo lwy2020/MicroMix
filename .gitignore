@@ -3,3 +3,7 @@ mgemm/build
 __pycache__
 .ipynb_checkpoints/
 saved/
+*.nsys-rep
+profile_logs/
+*.out
+*.log
