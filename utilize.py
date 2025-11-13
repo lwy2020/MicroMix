@@ -202,11 +202,9 @@ def search_p4_p6_proportions(model, dataloader, device_, seqlen, reorder_index, 
             )
 
     layers = model.model.layers
-    model.model.embed_tokens = model.model.embed_tokens.to(device)
-    if not model.model.norm.weight.is_meta:
-        model.model.norm = model.model.norm.to(device)
-    layers[0] = layers[0].to(device)
-
+    
+    model.to(device)
+    
     dtype = next(iter(model.parameters())).dtype
     inps = torch.zeros(
         (nsamples, seqlen, model.config.hidden_size), dtype=dtype, device=device
@@ -226,24 +224,26 @@ def search_p4_p6_proportions(model, dataloader, device_, seqlen, reorder_index, 
     layers[0] = Catcher(layers[0])
 
     dataloader = torch.stack(dataloader, dim=0).squeeze(1)
-    model.to(device)
+    
     try:
         model(torch.tensor(dataloader).to(device))
     except ValueError:
         pass
-    model.cpu()
+    
     
     layers[0] = layers[0].module
     layers[0] = layers[0].cpu()
-    model.model.embed_tokens = model.model.embed_tokens.cpu()
-    if not model.model.norm.weight.is_meta:
-        model.model.norm = model.model.norm.cpu()
+    model.cpu()
+
     torch.cuda.empty_cache()
 
     inps = cache['inps']
   
     attention_mask = cache['attention_mask']
     position_ids = cache['position_ids']
+
+    total_elements = 0
+    total_bits = 0
   
     for i in tqdm(range(len(layers))):
         act_scales = {}
@@ -258,9 +258,9 @@ def search_p4_p6_proportions(model, dataloader, device_, seqlen, reorder_index, 
             keys = keys.reshape(-1, keys.shape[-1]).contiguous()
             seqlen, in_features = keys.shape 
        
-            p4_threshold = keys.max(dim=-1, keepdim=True)[0] * math.pow(2, 1) / 254 * 8 / 6 
+            p4_threshold = keys.max(dim=-1, keepdim=True)[0] * math.pow(2, 1) / 254 * 8 / 6 *2
             # p6_threshold = keys.max(dim=-1, keepdim=True)[0] * math.pow(2, 1) / 254 * 32 / 7.5  #E2M3
-            p6_threshold = keys.max(dim=-1, keepdim=True)[0] * math.pow(2, 3) / 254 * 32 / 28   #E3M2
+            p6_threshold = keys.max(dim=-1, keepdim=True)[0] * math.pow(2, 3) / 254 * 32 / 28 *2   #E3M2
      
             p4_ratio = (keys < p4_threshold).sum() / keys.numel()
             p6_ratio = (keys < p6_threshold).sum() / keys.numel() - p4_ratio
@@ -269,8 +269,9 @@ def search_p4_p6_proportions(model, dataloader, device_, seqlen, reorder_index, 
             p6_num = math.ceil(in_features * p6_ratio / 128) * 128
             p4_num = in_features - p8_num - p6_num
             average_bits[name] = 4 * p4_ratio + 6 * p6_ratio + 8 * p8_ratio
-            
-            print(f'p4_ratio is {p4_ratio}, p6_ratio is {p6_ratio}, p8_ratio is {p8_ratio}, avg:{average_bits[name]}')
+            total_elements += in_features
+            total_bits += 4 * p4_num + 6 * p6_num + 8 * p8_num
+            print(f'p4_num is {p4_ratio}, p6_num is {p6_ratio}, p8_num is {p8_ratio}, avg:{average_bits[name]}')
             p6_nums[name] = p6_num
             p8_nums[name] = p8_num
 
@@ -286,9 +287,9 @@ def search_p4_p6_proportions(model, dataloader, device_, seqlen, reorder_index, 
         del layer
         gc.collect()
         torch.cuda.empty_cache()
-            
 
     for h in hooks:
         h.remove()
-
+        
+    print(f'average bits is {total_bits / total_elements}')
     return p6_nums, p8_nums, average_bits
