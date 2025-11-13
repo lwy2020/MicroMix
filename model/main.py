@@ -1,7 +1,7 @@
 import torch
 from collections import defaultdict
 
-from model_utils import reorder_model_llama, reorder_model_qwen
+from model_utils import reorder_model_llama, reorder_model_qwen, reorder_model_mixtral
 from parallel_utils import map_layers_to_multi_gpus
 from datautils import get_loaders
 from eval import *
@@ -27,6 +27,12 @@ def get_llama(model):
     return model
 
 def get_qwen(model):
+    from transformers import AutoModelForCausalLM
+    model = AutoModelForCausalLM.from_pretrained(model, torch_dtype="auto")
+   
+    return model
+
+def get_mixtral(model):
     from transformers import AutoModelForCausalLM
     model = AutoModelForCausalLM.from_pretrained(model, torch_dtype="auto")
    
@@ -65,7 +71,10 @@ if __name__ == '__main__':
         "--eval_ppl", action="store_true",
         help='Whether to evaluate perplexity.'
     )
-
+    parser.add_argument(
+        "--multi_gpu", action="store_true", 
+        help="at eval, map model to multiple gpus"
+    )
     parser.add_argument(
         "--lm_eval_num_fewshot", type=int, default=0, 
         help="Number of shots in lm evaluation. Default is 0 for zero-shot."
@@ -74,8 +83,8 @@ if __name__ == '__main__':
         "--lm_eval_limit", type=int, default=-1, 
         help="Limit the number of examples in lm evaluation"
     )
-  
     
+  
     args = parser.parse_args()
 
     model_name = args.model.split('/')[-2]
@@ -88,7 +97,10 @@ if __name__ == '__main__':
     elif "qwen" in args.model.lower():
         model = get_qwen(args.model)
         reorder_model_func = reorder_model_qwen
-       
+
+    elif "mixtral" in args.model.lower():
+        model = get_mixtral(args.model)
+        reorder_model_func = reorder_model_mixtral
     model.eval()
 
     import os
@@ -105,16 +117,31 @@ if __name__ == '__main__':
     p6_nums = torch.load(p6_num_filename, weights_only=False)
     p8_nums = torch.load(p8_num_filename, weights_only=False)
     
-  
+    print(model)
     print("Reordering model...")
     model = reorder_model_func(
         model, device='cuda:0', kv_cache=args.kv_cache, reorder_index=reorder_index, p8_nums=p8_nums, p6_nums=p6_nums
     )
-    model.to('cuda:0')
+    
     print(model)
-  
+
+    
     lm = HFLM(model, batch_size="auto")
     lm.model.eval()
+        
+    if args.multi_gpu:
+        map_layers_to_multi_gpus(lm.model.model.layers)
+        input_device = lm.model.model.layers[0].device
+        output_device = lm.model.model.layers[-1].device
+        assert input_device == output_device
+        lm._device = input_device
+        lm.model.model.embed_tokens.to(input_device)
+        lm.model.model.norm.to(output_device)
+        lm.model.lm_head.to(output_device)
+
+    else:
+        lm._device = 'cuda'
+        lm.model.to('cuda')
         
     if args.eval_ppl:
         datasets = ['wikitext2', 'c4']

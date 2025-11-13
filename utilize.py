@@ -241,6 +241,9 @@ def search_p4_p6_proportions(model, dataloader, device_, seqlen, reorder_index, 
   
     attention_mask = cache['attention_mask']
     position_ids = cache['position_ids']
+
+    total_elements = 0
+    total_bits = 0
   
     for i in tqdm(range(len(layers))):
         act_scales = {}
@@ -266,7 +269,8 @@ def search_p4_p6_proportions(model, dataloader, device_, seqlen, reorder_index, 
             p6_num = math.ceil(in_features * p6_ratio / 128) * 128
             p4_num = in_features - p8_num - p6_num
             average_bits[name] = 4 * p4_ratio + 6 * p6_ratio + 8 * p8_ratio
-            
+            total_elements += in_features
+            total_bits += 4 * p4_num + 6 * p6_num + 8 * p8_num
             print(f'p4_num is {p4_ratio}, p6_num is {p6_ratio}, p8_num is {p8_ratio}, avg:{average_bits[name]}')
             p6_nums[name] = p6_num
             p8_nums[name] = p8_num
@@ -283,9 +287,9 @@ def search_p4_p6_proportions(model, dataloader, device_, seqlen, reorder_index, 
         del layer
         gc.collect()
         torch.cuda.empty_cache()
-            
 
     for h in hooks:
         h.remove()
-
+        
+    print(f'average bits is {total_bits / total_elements}')
     return p6_nums, p8_nums, average_bits
