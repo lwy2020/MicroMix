@@ -128,16 +128,6 @@ gemm_device_multistage_cpasync(TensorA mA, TensorB mB, TensorSFA mSFA, TensorSFB
     }
 
 
-    if(0 && thread0() && block_x==0 && block_y==0)
-    {
-        print("tApA: "); print_tensor(tApA);
-        print("tBpB: "); print_tensor(tBpB);
-        print("tAcA: "); print_tensor(tAcA);
-        print("tBcB: "); print_tensor(tBcB);
-        print("cA: "); print_tensor(cA);
-        print("cB: "); print_tensor(cB);
-
-    }
 
     // Clear the smem tiles to account for predicated off loads
     clear(tAsA);
@@ -242,8 +232,8 @@ gemm_device_multistage_cpasync(TensorA mA, TensorB mB, TensorSFA mSFA, TensorSFB
         copy_if(g2s_copy_A, tApA, tAgA(_, _, _, k_tile), tAsA(_, _, _, smem_pipe_write));
         copy_if(g2s_copy_B, tBpB, tBgB(_, _, _, k_tile), tBsB(_, _, _, smem_pipe_write));
         cp_async_fence();
-        copy_if(g2s_copy_SFA, tApA, tAgSFA(_, _, _, k_tile), tAsSFA(_, _, _, smem_pipe_write));
-        copy_if(g2s_copy_SFB, tBpB, tBgSFB(_, _, _, k_tile), tBsSFB(_, _, _, smem_pipe_write));
+        // copy_if(g2s_copy_SFA, tApA, tAgSFA(_, _, _, k_tile), tAsSFA(_, _, _, smem_pipe_write));
+        // copy_if(g2s_copy_SFB, tBpB, tBgSFB(_, _, _, k_tile), tBsSFB(_, _, _, smem_pipe_write));
         smem_pipe_write++;
         if(smem_pipe_write == N_STAGE) smem_pipe_write = 0;
     };
@@ -260,8 +250,8 @@ gemm_device_multistage_cpasync(TensorA mA, TensorB mB, TensorSFA mSFA, TensorSFB
     // xxx_stage: point to current read stage tensor
     auto tDsA_stage   = tDsA(_, _, _, smem_pipe_read);
     auto tDsB_stage   = tDsB(_, _, _, smem_pipe_read);
-    auto tDsSFA_stage = tDsSFA(_, _, _, smem_pipe_read);
-    auto tDsSFB_stage = tDsSFB(_, _, _, smem_pipe_read);
+    auto tDsSFA_stage = tDsSFA(_, _, _, 0);
+    auto tDsSFB_stage = tDsSFB(_, _, _, 0);
 
     auto load_block = [&](int k_block)
     {
@@ -282,6 +272,10 @@ gemm_device_multistage_cpasync(TensorA mA, TensorB mB, TensorSFA mSFA, TensorSFB
     auto const num_k_block = size<2>(tDrA);        // MMA_K
 
     for (int k_tile = 0; k_tile < num_k_tile; k_tile++) {
+        copy_if(g2s_copy_SFA, tApA, tAgSFA(_, _, _, k_tile), tAsSFA(_, _, _, 0));
+        copy_if(g2s_copy_SFB, tBpB, tBgSFB(_, _, _, k_tile), tBsSFB(_, _, _, 0));
+        __syncthreads();
+
         for (int k_block = 0; k_block < num_k_block; k_block++) {
             auto k_block_next = ((k_block + 1) == num_k_block) ? 0 : (k_block + 1);
             // The last block
@@ -295,8 +289,8 @@ gemm_device_multistage_cpasync(TensorA mA, TensorB mB, TensorSFA mSFA, TensorSFB
                 // Read next tile
                 tDsA_stage   = tDsA(_, _, _, smem_pipe_read);
                 tDsB_stage   = tDsB(_, _, _, smem_pipe_read);
-                tDsSFA_stage = tDsSFA(_, _, _, smem_pipe_read);
-                tDsSFB_stage = tDsSFB(_, _, _, smem_pipe_read);
+                tDsSFA_stage = tDsSFA(_, _, _, 0);
+                tDsSFB_stage = tDsSFB(_, _, _, 0);
             }
             // The first block, pre load next tile
             if(k_block == 0)
@@ -348,6 +342,7 @@ gemm_device_multistage_cpasync(TensorA mA, TensorB mB, TensorSFA mSFA, TensorSFB
     Tensor tCpC = make_tensor<bool>(make_shape(size<1>(tCsC), size<2>(tCsC)), Stride<_1,_1>{});
     Tensor cC = make_identity_tensor(make_shape(size<0>(sC), size<1>(sC)));    // (BLK_M,BLK_N) -> (blk_m,blk_n)
     Tensor tCcC = g2s_thr_copy_C.partition_S(cC);                             // (BCPY,BCPY_N,BCPY_K) -> (blk_n,blk_k)
+    
     CUTLASS_PRAGMA_UNROLL
     for(int m = 0; m < size<0>(tCpC); m++)
     {
@@ -358,14 +353,6 @@ gemm_device_multistage_cpasync(TensorA mA, TensorB mB, TensorSFA mSFA, TensorSFB
         }
     }
     copy_if(g2s_copy_C, tCpC, tCgC, tCsC);
-
-    if(0 && thread0() && block_x == 0 and block_y ==0)
-    {
-        print("tCpC "); print_tensor(tCpC);
-        print("cC "); print_tensor(cC);
-        print("tCcC "); print_tensor(tCcC);
-
-    }
     __syncthreads();
 
     // C: S -> R

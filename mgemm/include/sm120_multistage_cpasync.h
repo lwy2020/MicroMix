@@ -177,7 +177,7 @@ gemm_host_tn_cpasync(ElementA *ptr_A, ElementSF *ptr_SFA,
     using CopyValueLayoutB = Layout<Shape<_1, Int<128/sizeof_bits_v<SmemAllocTypeA>>>>;
     using CopyValueLayoutC = Layout<Shape<_1, Int<128/sizeof_bits_v<ElementC>>>>;
     using CopyValueLayoutD = Layout<Shape<_1, Int<128/sizeof_bits_v<ElementD>>>>;
-    using CopyValueLayoutSF = Layout<Shape<_1, _1>>;
+    using CopyValueLayoutSF = Layout<Shape<_1, _32>>;
 
 
     using GmemCopyA = decltype(make_tiled_copy(GmemCopyAtomA{}, CopyThreadLayout{}, CopyValueLayoutA{}));

@@ -215,7 +215,7 @@ gemm_host_tn(ElementA *ptr_A, ElementSF *ptr_SFA,
                             cute::conditional_t<cute::is_same_v<ElementA, cutlass::float_e3m2_t>,
                                     cutlass::detail::float_e3m2_unpacksmem_t,
                                     uint_bit_t<sizeof_bits_v<ElementA>>>>>>;
-    print(sizeof_bits_v<TmaInternalElementA>);
+
     using TmaInternalElementB = cute::conditional_t<not isF8F6F4,
             ElementB,
             cute::conditional_t<cute::is_same_v<ElementB, cutlass::float_e2m1_t>,
