@@ -54,8 +54,8 @@ add_compile_options(-lineinfo)
 add_compile_options(-w)
 add_compile_options(-fpermissive)
 
-add_library(gemm_objs OBJECT src/w4a4.cu src/w4a6.cu src/w4a8.cu src/w6a6.cu src/w8a8.cu src/gemm.cu src/reorder.cu src/rmsnorm.cu src/activate.cu src/flashinfer.cu)
-
+file(GLOB GEMM_SOURCES CONFIGURE_DEPENDS "src/*.cu")
+add_library(gemm_objs OBJECT ${GEMM_SOURCES})
 
 # 创建目标可执行文件
 
@@ -85,3 +85,7 @@ target_link_libraries(bench_mxf4f6f8 gemm_objs)
 add_executable(bench_mxf4f8 benchmark/mxf4f8_bench.cu)
 target_compile_options(bench_mxf4f8 PRIVATE -Xptxas=-v -lineinfo -w -O3)
 target_link_libraries(bench_mxf4f8 gemm_objs)
+
+add_executable(bench_cutlass_mxf4f6f8 benchmark/cutlass_mxf4f6f8_bench.cu)
+target_compile_options(bench_cutlass_mxf4f6f8 PRIVATE -Xptxas=-v -lineinfo -w -O3)
+target_link_libraries(bench_cutlass_mxf4f6f8 gemm_objs)
