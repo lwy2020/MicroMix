@@ -22,10 +22,6 @@ using Type4 = cutlass::mx_float4_t<cutlass::float_e2m1_t>;
 using Type6 = cutlass::mx_float6_t<cutlass::float_e3m2_t>;
 using Type8 = cutlass::mx_float8_t<cutlass::float_e4m3_t>;
 
-constexpr int BM = 128;
-constexpr int BN = BM;
-constexpr int BK = 128;
-constexpr int N_STAGE = (BM == 128) ? 2 : 8;
 
 constexpr int block_size = 32;
 

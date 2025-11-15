@@ -67,10 +67,10 @@ float perform_benchmark(
     cudaEvent_t start, stop;
     CHECK_CUDA(cudaEventCreate(&start));
     CHECK_CUDA(cudaEventCreate(&stop));
-    // warp up
-    // for (int it = 0; it < 20; ++it) {
-    //     kernel_to_run();
-    // }
+    //warm up
+    for (int it = 0; it < 10; ++it) {
+        kernel_to_run();
+    }
 
     CHECK_CUDA(cudaEventRecord(start));
     for (int it = 0; it < timed_iters; ++it) {
