@@ -47,9 +47,9 @@ MODEL_CFGS = {
 }
 
 
-benchmark_dtypes = ["int4", torch.float16]
+
 num_warmup_steps = 3
-num_bench_steps = 10
+num_bench_steps = 1
 
 def repeated_run(num_repeats=10):
     def func(module):
@@ -115,7 +115,7 @@ def run_e2e(model, bsz, prefill_length, decode_steps):
     next_input = torch.tensor([[100] for _ in range (bsz)], dtype=torch.int32, device=device)
     def _prefill():
         model(test_input)
-    time_prefill, _ = module_benchmark(_prefill)
+    time_prefill, mem = module_benchmark(_prefill)
 
     past_key_value = model(test_input)
     def _decode_for_multiple_steps():
@@ -123,7 +123,10 @@ def run_e2e(model, bsz, prefill_length, decode_steps):
         past_key_value.length = prefill_length
         for _ in range(decode_steps):
             model(next_input, past_key_value=past_key_value)      
-    time_decode, mem = module_benchmark(_decode_for_multiple_steps)
+    if decode_steps is not None:
+        time_decode, mem = module_benchmark(_decode_for_multiple_steps)
+    else:
+        time_decode = None
     return time_prefill, time_decode, mem
 
 def run_decode(model, bsz, prefill_length, decode_steps):
