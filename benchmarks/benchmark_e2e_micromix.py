@@ -113,35 +113,52 @@ def run_e2e(model, bsz, prefill_length, decode_steps):
     device = model.device
     test_input = torch.randint(100, 200, (bsz, prefill_length), dtype=torch.int32, device=device)
     next_input = torch.tensor([[100] for _ in range (bsz)], dtype=torch.int32, device=device)
+    def _prefill():
+        model(test_input)
+    time_prefill, _ = module_benchmark(_prefill)
+
+    past_key_value = model(test_input)
     def _decode_for_multiple_steps():
         model._expected_max_length = prefill_length + decode_steps
-        past_key_value = model(test_input)
+        past_key_value.length = prefill_length
+        for _ in range(decode_steps):
+            model(next_input, past_key_value=past_key_value)      
+    time_decode, mem = module_benchmark(_decode_for_multiple_steps)
+    return time_prefill, time_decode, mem
+
+def run_decode(model, bsz, prefill_length, decode_steps):
+    device = model.device
+    test_input = torch.randint(100, 200, (bsz, prefill_length), dtype=torch.int32, device=device)
+    model._expected_max_length = prefill_length + decode_steps
+    past_key_value = model(test_input)
+    _cleanup()
+    next_input = torch.tensor([[100] for _ in range (bsz)], dtype=torch.int32, device=device)
+    def _decode_for_multiple_steps():
         past_key_value.length = prefill_length
         for _ in range(decode_steps):
             model(next_input, past_key_value=past_key_value)
     return module_benchmark(_decode_for_multiple_steps)
 
+
 @torch.no_grad
 def run_all_for_model(model, bsz, prefill, decode):
     model.eval()
-    if decode is None:
-        time_prefill, memory_prefill = run_prefill(model, bsz, prefill)
-        _cleanup()
-        return time_prefill, memory_prefill
-    else:
-        time_e2e, memory_e2e = run_e2e(model, bsz, prefill, decode)
-        _cleanup()
-        return time_e2e, memory_e2e
+    model = model.cuda()
+    time_prefill, time_decode, memory = run_e2e(model, bsz, prefill, decode)
+    _cleanup()
+    return time_prefill, time_decode, memory    
 
 def benchmark(args):
     model = get_model_quantized(args.model, MODEL_CFGS[args.model])
-    time_prefill_i4, mem_i4 = run_all_for_model(
+    time_prefill, time_decode, memory = run_all_for_model(
         model, args.batch_size, args.prefill_seq_len, args.decode_steps)
     del model
     _cleanup()
-
-    print(f"MicroMix time: {np.mean(time_prefill_i4):.3f} +- {1.96 * np.std(time_prefill_i4):.3f}ms")
-    print(f"MicroMix memory: {np.mean(mem_i4) / (1024 * 1024 * 1024):.3f}GB +- {1.96 * np.std(mem_i4):.3f}")
+    
+    print(f"Micromix prefill time: {np.mean(time_prefill):.3f} +- {1.96 * np.std(time_prefill):.3f}ms")
+    if args.decode_steps is not None:
+        print(f"Micromix decode time: {np.mean(time_decode):.3f} +- {1.96 * np.std(time_decode):.3f}ms")
+    print(f"Micromix peak memory: {np.mean(memory) / (1024 * 1024 * 1024):.3f}GB +- {1.96 * np.std(memory):.3f}")
     print('--------------')
 
 if __name__ == '__main__':
