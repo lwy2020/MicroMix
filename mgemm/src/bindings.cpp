@@ -29,14 +29,15 @@ torch::Tensor matmul(
     uint32_t KO = AO.size(1) * 1;  // 8bit packing is on the columns
 
     auto C = torch::zeros({M, N}, torch::dtype(torch::kBFloat16).device(AN.device()));
+    // for fp6 kernel, A B should be unpack first
+    auto AB_unpack = torch::zeros({M + N, KS}, torch::dtype(torch::kByte).device(AN.device()));
+    auto ptr_A_fp6_unpack = AB_unpack.data_ptr<uint8_t>();
+    auto ptr_B_fp6_unpack = ptr_A_fp6_unpack + M * KS;
 
     if (AS.size(1) == BS.size(1) && AO.size(1) == BO.size(1)) { // w4a4 w6a6 w8a8
         if(M < 128) //decode mode
         {
-            // for fp6 kernel, A B should be unpack first
-            auto AB_unpack = torch::zeros({M + N, KS}, torch::dtype(torch::kByte).device(AN.device()));
-            auto ptr_A_fp6_unpack = AB_unpack.data_ptr<uint8_t>();
-            auto ptr_B_fp6_unpack = ptr_A_fp6_unpack + M * KS;
+            
 
             matmul_host_dev(
                 reinterpret_cast<cutlass::float_e2m1_t *>(AN.data_ptr<uint8_t>()), reinterpret_cast<cutlass::float_e2m1_t *>(BN.data_ptr<uint8_t>()),
@@ -54,7 +55,7 @@ torch::Tensor matmul(
         {
             matmul_host(
                 reinterpret_cast<cutlass::float_e2m1_t *>(AN.data_ptr<uint8_t>()), reinterpret_cast<cutlass::float_e2m1_t *>(BN.data_ptr<uint8_t>()),
-                reinterpret_cast<cutlass::float_e3m2_t *>(AS.data_ptr<uint8_t>()), reinterpret_cast<cutlass::float_e3m2_t *>(BS.data_ptr<uint8_t>()), 
+                reinterpret_cast<cutlass::float_e4m3_t *>(ptr_A_fp6_unpack), reinterpret_cast<cutlass::float_e3m2_t *>(ptr_B_fp6_unpack), 
                 reinterpret_cast<cutlass::float_e4m3_t *>(AO.data_ptr<uint8_t>()), reinterpret_cast<cutlass::float_e4m3_t *>(BO.data_ptr<uint8_t>()),
                 M, N,
                 KN, KS, KO,

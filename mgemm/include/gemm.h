@@ -21,7 +21,7 @@
 void matmul_host(
         cutlass::float_e2m1_t *AN,
         cutlass::float_e2m1_t *BN,
-        cutlass::float_e3m2_t *AS,
+        cutlass::float_e4m3_t *AS,
         cutlass::float_e3m2_t *BS,
         cutlass::float_e4m3_t *AO,
         cutlass::float_e4m3_t *BO,

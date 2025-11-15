@@ -1,6 +1,7 @@
 #include "w4a4.h"
 #include "w6a6.h"
 #include "w8a8.h"
+#include "w6a8.h"
 #include "w4a6.h"
 #include "w4a8.h"
 #include "gemm.h"
@@ -28,7 +29,7 @@ using         ElementC    = cutlass::bfloat16_t;                            // E
 void matmul_host(
         ElementANormal::DataType *AN,
         ElementBNormal::DataType *BN,
-        ElementASensitive::DataType *AS,
+        cutlass::float_e4m3_t *AS,
         ElementBSensitive::DataType *BS,
         ElementAOutlier::DataType *AO,
         ElementBOutlier::DataType *BO,
@@ -48,12 +49,9 @@ void matmul_host(
 )
 {
     
-    // constexpr int sm_count_threshold = 150;
-    // bool use_cutlass_kernel = (cute::ceil_div(M , 128) * cute::ceil_div(N , 128)) > sm_count_threshold;
-    // printf("M = %d, N = %d, KN = %d, KS = %d, KO = %d, CUTLASS_ON: %d\n", M, N, KN, KS, KO, use_cutlass_kernel);
  
     if(KN!=0)matmul_host_w4a4(AN, BN, M, N, KN, C, D, SFAN, SFBN);
-    if(KS!=0)matmul_host_w6a6(AS, BS, M, N, KS, D, D, SFAS, SFBS);
+    if(KS!=0)matmul_host_w6a8(AS, BS, M, N, KS, D, D, SFAS, SFBS);
     if(KO!=0)matmul_host_w8a8(AO, BO, M, N, KO, D, D, SFAO, SFBO);
     // cudaDeviceSynchronize();
 
