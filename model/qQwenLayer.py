@@ -6,7 +6,8 @@ from transformers.models.qwen2.modeling_qwen2 import Qwen2DecoderLayer, Qwen2RMS
 
 from qLinearLayer import QLinearLayer
 
-
+import sys
+sys.path.append('./mgemm/build/')
 import mixedgemm
 
 def rotate_half(x):
