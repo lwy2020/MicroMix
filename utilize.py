@@ -96,9 +96,8 @@ def get_act_stats(model, dataloader, device_, metric='mean', seqlen=2048):
             )
 
     layers = model.model.layers
-    model.model.embed_tokens = model.model.embed_tokens.to(device)
-    if not model.model.norm.weight.is_meta:
-        model.model.norm = model.model.norm.to(device)
+
+    model.to(device)
     layers[0] = layers[0].to(device)
 
     dtype = next(iter(model.parameters())).dtype
@@ -128,9 +127,7 @@ def get_act_stats(model, dataloader, device_, metric='mean', seqlen=2048):
     
     layers[0] = layers[0].module
     layers[0] = layers[0].cpu()
-    model.model.embed_tokens = model.model.embed_tokens.cpu()
-    if not model.model.norm.weight.is_meta:
-        model.model.norm = model.model.norm.cpu()
+    model.cpu()
     torch.cuda.empty_cache()
 
     outs = torch.zeros_like(inps)
