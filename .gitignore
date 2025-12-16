@@ -7,3 +7,5 @@ saved/
 profile_logs/
 *.out
 *.log
+results/
+

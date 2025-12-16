@@ -5,9 +5,6 @@ import sys
 sys.path.append('./mgemm/build/')
 import mixedgemm
 
-import math
-import random
-
 def find_qlinear_layers(module, name=''):
     if type(module) == QLinearLayer:
         if module.enable_quant:
@@ -18,7 +15,8 @@ def find_qlinear_layers(module, name=''):
             child, name=name + '.' + name1 if name != '' else name1
         ))
     return res
-    
+
+
 class QLinearLayer(nn.Module):
     def __init__(
         self,
@@ -40,13 +38,18 @@ class QLinearLayer(nn.Module):
             self.bias = None
         
         self.p6_num = p6_num  #p4_num, p6_num, p8_num需要整除128
-        self.p8_num = p8_num
+        self.p8_num = p8_num 
         self.p4_num = self.in_features - p8_num - p6_num
        
-        if self.in_features > 25000:
-            self.BN, self.BS, self.BO, self.SFBN, self.SFBS, self.SFBO = mixedgemm.downproj_quantize_w(torch.index_select(originalLayer.weight.data, 1, reorder_index.cuda()), self.p4_num, self.p6_num, self.p8_num)
-        else:
-            self.BN, self.BS, self.BO, self.SFBN, self.SFBS, self.SFBO = mixedgemm.reorder_quantize_w(originalLayer.weight.data, reorder_index.to(torch.int16).cuda(), self.p4_num, self.p6_num, self.p8_num)
+       
+        out_features, in_features = originalLayer.weight.data.shape
+
+        # micromix
+        self.weight = originalLayer.weight.data
+        self.reorder_index = reorder_index.to(torch.int16).cuda()
+
+        
+        self.BN, self.BS, self.BO, self.SFBN, self.SFBS, self.SFBO = mixedgemm.reorder_quantize_w4(self.weight, self.reorder_index, self.p4_num, self.p6_num, self.p8_num)
         
         reorder_index.cpu()
         del reorder_index
@@ -54,11 +57,17 @@ class QLinearLayer(nn.Module):
 
     @torch.no_grad()
     def forward(self, x):
-        AN, AS, AO, SFAN, SFAS, SFAO, bsz, q_len = x
+        bsz, q_len, _ = x.shape
+        x = x.reshape(bsz*q_len, -1).contiguous() 
+            
+        if q_len == 1:
+            AN, AS, AO, SFAN, SFAS, SFAO = mixedgemm.reorder_quantize_x(x, self.reorder_index, 0, 0, self.in_features)
+        else:
+            AN, AS, AO, SFAN, SFAS, SFAO = mixedgemm.reorder_quantize_x(x, self.reorder_index, self.p4_num, self.p6_num, self.p8_num)
         y = mixedgemm.matmul(AN, self.BN, AS, self.BS, AO, self.BO, SFAN, self.SFBN, SFAS, self.SFBS, SFAO, self.SFBO)
         if self.bias is not None:
             y = y + self.bias
 
         y = y.reshape(bsz, q_len, -1)
         return y
-    
+

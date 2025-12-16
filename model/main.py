@@ -54,8 +54,8 @@ if __name__ == '__main__':
         help='Seed for sampling the calibration data.'
     )
     parser.add_argument(
-        '--act_sort_metric', type=str, default='mean', choices=['mean', 'hessian'],
-        help='The metric used to sort the activations.'
+        '--do_quant', action='store_true',
+        help='Whether to do quantization'
     )
    
     parser.add_argument(
@@ -92,7 +92,7 @@ if __name__ == '__main__':
     if "llama" in args.model.lower():
         model = get_llama(args.model)
         reorder_model_func = reorder_model_llama
-       
+        
     elif "qwen" in args.model.lower():
         model = get_qwen(args.model)
         reorder_model_func = reorder_model_qwen
@@ -102,25 +102,24 @@ if __name__ == '__main__':
         reorder_model_func = reorder_model_mixtral
     model.eval()
 
-    import os
-  
-    index_filename = f'./saved/{model_name}_reorder_index_wikitext2_{args.act_sort_metric}.pt'
-    p6_num_filename = f'./saved/{model_name}_p6_num_wikitext2_{args.act_sort_metric}.pt'
-    p8_num_filename = f'./saved/{model_name}_p8_num_wikitext2_{args.act_sort_metric}.pt'
- 
+    if args.do_quant:
+        index_filename = f'./saved/{model_name}_reorder_index_wikitext2.pt'
+        p6_num_filename = f'./saved/{model_name}_p6_num_wikitext2.pt'
+        p8_num_filename = f'./saved/{model_name}_p8_num_wikitext2.pt'
+     
+        import os
+        assert os.path.isfile(index_filename), "reorder index file not found."
     
-    assert os.path.isfile(index_filename), "reorder index file not found."
-
-    print("Loading cached reording index from disk...")
-    reorder_index = torch.load(index_filename, weights_only=False)
-    p6_nums = torch.load(p6_num_filename, weights_only=False)
-    p8_nums = torch.load(p8_num_filename, weights_only=False)
-    
-    print(model)
-    print("Reordering model...")
-    model = reorder_model_func(
-        model, device='cuda:0', kv_cache=args.kv_cache, reorder_index=reorder_index, p8_nums=p8_nums, p6_nums=p6_nums
-    )
+        print("Loading cached reording index from disk...")
+        reorder_index = torch.load(index_filename, weights_only=False)
+        p6_nums = torch.load(p6_num_filename, weights_only=False)
+        p8_nums = torch.load(p8_num_filename, weights_only=False)
+        
+        print(model)
+        print("Reordering model...")
+        model = reorder_model_func(
+            model, device='cuda:0', kv_cache=args.kv_cache, reorder_index=reorder_index, p8_nums=p8_nums, p6_nums=p6_nums
+        )
     
     print(model)
 
@@ -139,8 +138,8 @@ if __name__ == '__main__':
         lm.model.lm_head.to(output_device)
 
     else:
-        lm._device = 'cuda'
         lm.model.to('cuda')
+        lm._device = torch.device('cuda')
         
     if args.eval_ppl:
         datasets = ['wikitext2', 'c4']
@@ -166,7 +165,8 @@ if __name__ == '__main__':
             tasks=task_names,
             num_fewshot=args.lm_eval_num_fewshot,
             limit=None if args.lm_eval_limit == -1 else args.lm_eval_limit,
-            batch_size="auto"
+            batch_size="auto",
+            confirm_run_unsafe_code=True
         )
 
         table_results = make_table(results)

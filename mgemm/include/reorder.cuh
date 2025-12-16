@@ -368,3 +368,10 @@ void run_downproj_bf16_mixed(
   sf_t *d_normal_scale, sf_t *d_sensitive_scale, sf_t *d_outlier_scale,
   int KN, int KS, int KO
 );
+
+void run_downproj_bf16_mxfp4(
+  bf16_t *d_W, int out_features, int hidden_dim,
+  uint8_t *d_o_normal, uint8_t *d_o_sensitive, uint8_t *d_o_outlier,
+  sf_t *d_normal_scale, sf_t *d_sensitive_scale, sf_t *d_outlier_scale,
+  int KN, int KS, int KO
+);

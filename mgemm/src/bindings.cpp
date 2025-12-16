@@ -718,6 +718,55 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Te
     return std::make_tuple(WN, WS, WO, SFWN, SFWS, SFWO);
 }
 
+std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor> downproj_quantize_w4(
+        const torch::Tensor &W,
+        const int KN,
+        const int KS,
+        const int KO
+)
+{
+//     torch::checkAllContiguous("matmul", {{A, "A",       0},
+//                                                 {B, "B", 1}});
+    // torch::checkDeviceType("matmul", {AN, BN, AS, BS, AO, BO, SFAN, SFBN, SFAS, SFBS, SFAO, SFBO}, at::DeviceType::CUDA);
+
+    // torch::checkAllSameGPU("matmul", {{A, "A",       0},
+    //                                       {   B, "B", 1}});
+    int N = W.size(0);
+    int K = KN + KS + KO;
+    // static_assert(KN % 128 == 0 && KS % 128 == 0 && KO % 128 == 0, "TMA requires 32bytes alignment.");
+    auto WN = torch::empty({N, KN / 2}, torch::dtype(torch::kUInt8).device(W.device()));
+    auto WS = torch::empty({N, KS / 2}, torch::dtype(torch::kUInt8).device(W.device()));
+    auto WO = torch::empty({N, KO / 2}, torch::dtype(torch::kUInt8).device(W.device()));
+    auto SFWN = torch::empty({(N / 128 + 1) * 128 * KN / 32}, torch::dtype(torch::kUInt8).device(W.device()));
+    auto SFWS = torch::empty({(N / 128 + 1) * 128 * KS / 32}, torch::dtype(torch::kUInt8).device(W.device()));
+    auto SFWO = torch::empty({(N / 128 + 1) * 128 * KO / 32}, torch::dtype(torch::kUInt8).device(W.device()));
+    // cutlass::NumericConverter<cutlass::float_ue8m0_t, float, cutlass::FloatRoundStyle::round_to_nearest> converterSF;
+    run_downproj_bf16_mxfp4(
+        (cutlass::bfloat16_t *)W.data_ptr<at::BFloat16>(), N, K, 
+        WN.data_ptr<uint8_t>(), WS.data_ptr<uint8_t>(), WO.data_ptr<uint8_t>(), 
+        reinterpret_cast<cutlass::float_ue8m0_t *>(SFWN.data_ptr<uint8_t>()), 
+        reinterpret_cast<cutlass::float_ue8m0_t *>(SFWS.data_ptr<uint8_t>()), 
+        reinterpret_cast<cutlass::float_ue8m0_t *>(SFWO.data_ptr<uint8_t>()), 
+        KN, KS, KO
+    );
+    // // CRITICAL: Synchronize and check for errors immediately after kernel launch
+    // cudaError_t kernel_err = cudaGetLastError(); // Check for asynchronous errors from the kernel
+    // if (kernel_err != cudaSuccess) {
+    //     std::cerr << "CUDA error after launching run_reorder_quantize_x: "
+    //             << cudaGetErrorString(kernel_err) << std::endl;
+    //     // Optionally, throw an exception to propagate the error to Python
+    //     throw std::runtime_error(std::string("CUDA error in run_reorder_quantize_x: ") + cudaGetErrorString(kernel_err));
+    // }
+
+    // cudaError_t sync_err = cudaDeviceSynchronize(); // Wait for the kernel to complete and check for runtime errors
+    // if (sync_err != cudaSuccess) {
+    //     std::cerr << "CUDA error during/after run_reorder_quantize_x synchronization: "
+    //             << cudaGetErrorString(sync_err) << std::endl;
+    //     throw std::runtime_error(std::string("CUDA sync error in run_reorder_quantize_x: ") + cudaGetErrorString(sync_err));
+    // }
+    // std::cout << "run_reorder_quantize_x kernel finished and synced successfully." << std::endl; std::cout.flush();
+    return std::make_tuple(WN, WS, WO, SFWN, SFWS, SFWO);
+}
 
 // ===== Flash Infer ======
 inline void check_shape(const torch::Tensor &a, const torch::Tensor &b,
@@ -1283,6 +1332,11 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m
         );
     m.def("downproj_quantize_w", &downproj_quantize_w,
           "Quantize down_proj weight",
+          py::arg("W"),
+          py::arg("KN"), py::arg("KS"), py::arg("KO")
+        );
+    m.def("downproj_quantize_w4", &downproj_quantize_w4,
+          "Quantize down_proj weight to mxfp4",
           py::arg("W"),
           py::arg("KN"), py::arg("KS"), py::arg("KO")
         );

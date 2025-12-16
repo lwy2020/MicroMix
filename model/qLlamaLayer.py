@@ -95,14 +95,14 @@ class QLlamaDecoderLayer(nn.Module):
             i=layer_idx
         )
         # self.mlp = originalLayer.mlp
-        self.input_layernorm = QLlamaRMSNorm(
-            originalLayer.input_layernorm, 
-            
-        )
-        self.post_attention_layernorm = QLlamaRMSNorm(
-            originalLayer.post_attention_layernorm, 
-            
-        )
+        self.input_layernorm = originalLayer.input_layernorm
+        # QLlamaRMSNorm(
+        #     originalLayer.input_layernorm,     
+        # )
+        self.post_attention_layernorm = originalLayer.post_attention_layernorm
+        # QLlamaRMSNorm(
+        #     originalLayer.post_attention_layernorm,   
+        # )
 
     def to(self, *args, **kwargs):
         super(QLlamaDecoderLayer, self).to(*args, **kwargs)
@@ -200,19 +200,13 @@ class QLlamaAttention(nn.Module):
         super().__init__()
         self.q_kv_cache = kv_cache
         self.config = originalAttn.config
-        self.hidden_size = originalAttn.hidden_size
-        self.num_heads = originalAttn.num_heads
-        self.head_dim = self.hidden_size // self.num_heads
-        self.num_key_value_heads = originalAttn.num_key_value_heads
+      
+        self.num_heads = self.config.num_attention_heads
+        self.head_dim = self.config.hidden_size // self.num_heads
+        self.num_key_value_heads = self.config.num_key_value_heads
         self.num_key_value_groups = originalAttn.num_key_value_groups
-        self.max_position_embeddings = originalAttn.max_position_embeddings
-        self.rope_theta = originalAttn.rope_theta
+       
         self.layer_idx = i
-        if (self.head_dim * self.num_heads) != self.hidden_size:
-            raise ValueError(
-                f"hidden_size must be divisible by num_heads (got `hidden_size`: {self.hidden_size}"
-                f" and `num_heads`: {self.num_heads})."
-            )
             
         nameTemplate = 'layers.{}.{}.{}.{}'
         self.q_proj = QLinearLayer(
@@ -239,8 +233,6 @@ class QLlamaAttention(nn.Module):
             p6_num=p6_nums[nameTemplate.format(i, 'self_attn', 'o_proj', 'input')],
             reorder_index=reorder_index[nameTemplate.format(i, 'self_attn', 'o_proj', 'input')]
         )
-        self.rotary_emb = originalAttn.rotary_emb
-
 
         self.attention_dropout=originalAttn.attention_dropout
 
@@ -273,40 +265,19 @@ class QLlamaAttention(nn.Module):
 
         bsz, q_len, _ = hidden_states.size()
         
-        hidden_states = hidden_states.reshape(bsz*q_len, -1).contiguous().detach()
-        AN, AS, AO, SFAN, SFAS, SFAO = mixedgemm.reorder_quantize_x(hidden_states, self.q_reorder_index, self.q_proj.p4_num, self.q_proj.p6_num, self.q_proj.p8_num)
-        torch.cuda.synchronize()
-        
-        hidden_states = (AN, AS, AO, SFAN, SFAS, SFAO, bsz, q_len)
         query_states = self.q_proj(hidden_states).view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
         key_states = self.k_proj(hidden_states).view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
         value_states = self.v_proj(hidden_states).view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
-
-        # kv_seq_len = key_states.shape[-2]
-        # if past_key_value is not None:
-        #     kv_seq_len += past_key_value[0].shape[-2]
         
-        # Fake quantize the key_states.
-        # Preserve the position embedding info by first quantize.
-        if self.q_kv_cache:
-            key_states = quantize_int_group(key_states, nbits=4, group_size=128)
-        
-        # cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
-        if position_embeddings is None:
-            cos, sin = self.rotary_emb(value_states, position_ids)
-         
-        else:
-            cos, sin = position_embeddings
-        # query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
+        cos, sin = position_embeddings
         query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
-        # [bsz, nh, t, hd]
+        
 
         if past_key_value is not None:
             # reuse k, v, self_attention
             cache_kwargs = {"sin": sin, "cos": cos, "cache_position": cache_position}
             key_states, value_states = past_key_value.update(key_states, value_states, self.layer_idx, cache_kwargs)
 
-        # past_key_value = (key_states, value_states) if use_cache else None
 
         key_states = repeat_kv(key_states, self.num_key_value_groups)
         value_states = repeat_kv(value_states, self.num_key_value_groups)
@@ -317,7 +288,7 @@ class QLlamaAttention(nn.Module):
             
         if self.q_kv_cache:
             value_states = quantize_int_group(value_states, nbits=4, group_size=128)
-            
+            key_states = quantize_int_group(key_states, nbits=4, group_size=128)
             
         if query_states.device.type == "cuda" and causal_mask is not None:
             query_states = query_states.contiguous()
@@ -338,11 +309,11 @@ class QLlamaAttention(nn.Module):
         
         # Quantize the attention output
       
-        attn_output = attn_output.reshape(bsz*q_len, -1).contiguous().detach()
+        # attn_output = attn_output.reshape(bsz*q_len, -1).contiguous().detach()
 
-        AN, AS, AO, SFAN, SFAS, SFAO = mixedgemm.reorder_quantize_x(attn_output, self.o_reorder_index, self.o_proj.p4_num, self.o_proj.p6_num, self.o_proj.p8_num)
-        torch.cuda.synchronize()
-        attn_output = (AN, AS, AO, SFAN, SFAS, SFAO, bsz, q_len)
+        # AN, AS, AO, SFAN, SFAS, SFAO = mixedgemm.reorder_quantize_x(attn_output, self.o_reorder_index, self.o_proj.p4_num, self.o_proj.p6_num, self.o_proj.p8_num)
+        # torch.cuda.synchronize()
+        # attn_output = (AN, AS, AO, SFAN, SFAS, SFAO, bsz, q_len)
         attn_output = self.o_proj(attn_output)
 
         if not output_attentions:
@@ -399,19 +370,19 @@ class QLlamaMLP(nn.Module):
         # input X: [b, seq, dim]: quantized
 
         bsz, q_len, _ = x.shape
-        x = x.reshape(bsz*q_len, -1).contiguous().detach()
+        # x = x.reshape(bsz*q_len, -1).contiguous().detach()
 
-        AN, AS, AO, SFAN, SFAS, SFAO = mixedgemm.reorder_quantize_x(x, self.up_reorder_index, self.up_proj.p4_num, self.up_proj.p6_num, self.up_proj.p8_num)
-        torch.cuda.synchronize()
-        x = (AN, AS, AO, SFAN, SFAS, SFAO, bsz, q_len)
+        # AN, AS, AO, SFAN, SFAS, SFAO = mixedgemm.reorder_quantize_x(x, self.up_reorder_index, self.up_proj.p4_num, self.up_proj.p6_num, self.up_proj.p8_num)
+        # torch.cuda.synchronize()
+        # x = (AN, AS, AO, SFAN, SFAS, SFAO, bsz, q_len)
         tmpResult = self.act_fn(self.gate_proj(x)) * self.up_proj(x)
         # Quantize the activations and feed into down_proj
 
         bsz, q_len, _ = tmpResult.shape
-        tmpResult = tmpResult.reshape(bsz*q_len, -1).contiguous().detach()
+        # tmpResult = tmpResult.reshape(bsz*q_len, -1).contiguous().detach()
 
-        AN, AS, AO, SFAN, SFAS, SFAO = mixedgemm.reorder_quantize_x(tmpResult, self.down_reorder_index, self.down_proj.p4_num, self.down_proj.p6_num, self.down_proj.p8_num)
-        torch.cuda.synchronize()
-        tmpResult = (AN, AS, AO, SFAN, SFAS, SFAO, bsz, q_len)
+        # AN, AS, AO, SFAN, SFAS, SFAO = mixedgemm.reorder_quantize_x(tmpResult, self.down_reorder_index, self.down_proj.p4_num, self.down_proj.p6_num, self.down_proj.p8_num)
+        # torch.cuda.synchronize()
+        # tmpResult = (AN, AS, AO, SFAN, SFAS, SFAO, bsz, q_len)
        
         return self.down_proj(tmpResult)

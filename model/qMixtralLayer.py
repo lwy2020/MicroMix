@@ -4,7 +4,7 @@ import torch.nn.functional as F
 from typing import List, Optional, Tuple
 import math
 from tqdm import tqdm
-from transformers.models.mixtral.modeling_mixtral import MixtralDecoderLayer, MixtralRMSNorm, MixtralSdpaAttention, MixtralSparseMoeBlock, MixtralBlockSparseTop2MLP
+from transformers.models.mixtral.modeling_mixtral import MixtralDecoderLayer, MixtralRMSNorm, MixtralAttention, MixtralSparseMoeBlock, MixtralBlockSparseTop2MLP
 from qLinearLayer import QLinearLayer
 
 import sys
@@ -197,7 +197,7 @@ class QMixtralAttention(nn.Module):
 
     def __init__(
         self, 
-        originalAttn: MixtralSdpaAttention,
+        originalAttn: MixtralAttention,
         kv_cache,
         p8_nums,
         p6_nums,
