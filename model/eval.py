@@ -35,6 +35,7 @@ def eval_ppl(model, testenc, dev):
             cache['i'] += 1
             cache['attention_mask'] = kwargs['attention_mask']
             cache['position_ids'] = kwargs['position_ids']
+            cache['position_embeddings'] = kwargs['position_embeddings']
             raise ValueError
     layers[0] = Catcher(layers[0])
     for i in range(nsamples):
@@ -52,11 +53,12 @@ def eval_ppl(model, testenc, dev):
     outs = torch.zeros_like(inps)
     attention_mask = cache['attention_mask']
     position_ids = cache['position_ids']
+    position_embeddings = cache['position_embeddings']
 
     for i in tqdm(range(len(layers))):
         layer = layers[i].to(dev)
         for j in range(nsamples):
-            outs[j] = layer(inps[j].unsqueeze(0), attention_mask=attention_mask, position_ids=position_ids)[0]
+            outs[j] = layer(inps[j].unsqueeze(0), attention_mask=attention_mask, position_ids=position_ids,position_embeddings=position_embeddings)[0]
         layers[i] = layer.cpu()
         del layer
         inps, outs = outs, inps

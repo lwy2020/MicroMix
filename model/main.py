@@ -54,6 +54,10 @@ if __name__ == '__main__':
         help='Seed for sampling the calibration data.'
     )
     parser.add_argument(
+        '--batch_size',
+        type=str, default="1", 
+    )
+    parser.add_argument(
         '--do_quant', action='store_true',
         help='Whether to do quantization'
     )
@@ -75,7 +79,7 @@ if __name__ == '__main__':
         help="at eval, map model to multiple gpus"
     )
     parser.add_argument(
-        "--lm_eval_num_fewshot", type=int, default=0, 
+        "--lm_eval_num_fewshot", type=int, default=None, 
         help="Number of shots in lm evaluation. Default is 0 for zero-shot."
     )
     parser.add_argument(
@@ -124,7 +128,7 @@ if __name__ == '__main__':
     print(model)
 
     
-    lm = HFLM(model, batch_size="auto")
+    lm = HFLM(model, batch_size=args.batch_size)
     lm.model.eval()
         
     if args.multi_gpu:
@@ -142,7 +146,7 @@ if __name__ == '__main__':
         lm._device = torch.device('cuda')
         
     if args.eval_ppl:
-        datasets = ['wikitext2', 'c4']
+        datasets = ['wikitext2']
 
         for dataset in datasets:
             dataloader, testloader = get_loaders(

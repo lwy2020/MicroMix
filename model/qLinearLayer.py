@@ -37,19 +37,20 @@ class QLinearLayer(nn.Module):
         else:
             self.bias = None
         
-        self.p6_num = p6_num  #p4_num, p6_num, p8_num需要整除128
-        self.p8_num = p8_num 
+        self.p6_num = 0  #p4_num, p6_num, p8_num需要整除128
+        self.p8_num = p8_num + p6_num
         self.p4_num = self.in_features - p8_num - p6_num
        
        
         out_features, in_features = originalLayer.weight.data.shape
 
         # micromix
-        self.weight = originalLayer.weight.data
         self.reorder_index = reorder_index.to(torch.int16).cuda()
 
         
-        self.BN, self.BS, self.BO, self.SFBN, self.SFBS, self.SFBO = mixedgemm.reorder_quantize_w4(self.weight, self.reorder_index, self.p4_num, self.p6_num, self.p8_num)
+        self.BN, self.BS, self.BO, self.SFBN, self.SFBS, self.SFBO = mixedgemm.reorder_quantize_w4(originalLayer.weight.data, self.reorder_index, self.p4_num, self.p6_num, self.p8_num)
+
+        # self.BN_d, self.BS_d, self.BO_d, self.SFBN_d, self.SFBS_d, self.SFBO_d = mixedgemm.reorder_quantize_w4(originalLayer.weight.data, self.reorder_index, 0, 0, self.in_features)
         
         reorder_index.cpu()
         del reorder_index

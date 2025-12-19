@@ -64,12 +64,10 @@ def smooth_ln_fcs_llama_like(ln, fcs, act_scales, alpha=0.5):
     weight_scales = torch.cat(
         [fc.weight.abs().max(dim=0, keepdim=True)[0] for fc in fcs], dim=0
     )
-    weight_scales_max = weight_scales.max(dim=0)[0].clamp(min=1e-5)
-    weight_scales_mean = torch.cat(
-        [fc.weight.abs().mean(dim=0, keepdim=True) for fc in fcs], dim=0
-    ).mean(dim=0).clamp(min=1e-5)
+    weight_scales = weight_scales.max(dim=0)[0].clamp(min=1e-5)
+
     scales = (
-        (act_scales.pow(alpha) / weight_scales_max.pow(1 - alpha))
+        (act_scales.pow(alpha) / weight_scales.pow(1 - alpha))
         .clamp(min=1e-5)
         .to(device)
         .to(dtype)

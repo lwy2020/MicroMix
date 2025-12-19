@@ -14,8 +14,9 @@ import time
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--model", type=str, help="path of the hf model")
-parser.add_argument("--samples", type=int, default=32)
+parser.add_argument("--samples", type=int, default=128)
 parser.add_argument("--seqlen", type=int, default=2048)
+parser.add_argument("--lamda", type=float, default=1.0)
 args = parser.parse_args()
 
 def load_model(model_path):
@@ -38,8 +39,8 @@ def get_act_stats(model, device_, tokenizer, seqlen=2048, num_samples=32):
 
     def stat_tensor(name, tensor):
         hidden_dim = tensor.shape[-1]
-        tensor = tensor.view(-1, hidden_dim).detach().cpu()
-        comming_scales = torch.mean(tensor.abs(), dim=0).float()
+        tensor = tensor.view(-1, hidden_dim).detach().cpu().abs()
+        comming_scales = torch.mean(tensor, dim=0).float()
         comming_max =  torch.max(tensor, dim=0)[0].float()
         if name in act_scales:
             total_scales[name].append(tensor)
@@ -62,7 +63,6 @@ def get_act_stats(model, device_, tokenizer, seqlen=2048, num_samples=32):
         # stat_tensor(name + ".output", y)
 
     def reorder_tensor(tensor):
-        # assert dimension == 1
         assert tensor.dim() == 1, "Choosing outliers must be 1 dimensional"
         sorted_tensor, sorted_index = torch.sort(tensor, descending=False) # For putting outliers at last
         # _, sorted_index = torch.sort(tensor, descending=True) # For putting outliers at first
@@ -93,29 +93,25 @@ def get_act_stats(model, device_, tokenizer, seqlen=2048, num_samples=32):
     total_elements = 0
     total_bits = 0
     act_orders = {}
-    
+
     for key, value in total_scales.items():
         act_orders[key] = reorder_tensor(act_scales[key])
         value = torch.cat(value, dim=0)
         seqlen, in_features = value.shape 
         
-        p4_threshold = value.max(dim=-1, keepdim=True)[0] * math.pow(2, 1) / 254 * 8 / 6 *2
-        # p6_threshold = value.max(dim=-1, keepdim=True)[0] * math.pow(2, 1) / 254 * 32 / 7.5  #E2M3
-        p6_threshold = value.max(dim=-1, keepdim=True)[0] * math.pow(2, 3) / 254 * 32 / 28 *2   #E3M2
- 
+        p4_threshold = value.max(dim=-1, keepdim=True)[0] * 448 / 6 / math.pow(2, 10) * args.lamda
         p4_ratio = (value < p4_threshold).sum() / value.numel()
-        p6_ratio = (value < p6_threshold).sum() / value.numel() - p4_ratio
-        p8_ratio = 1 - p4_ratio - p6_ratio
+        p8_ratio = 1 - p4_ratio
         p8_num = math.ceil(in_features * p8_ratio / 128) * 128
-        p6_num = math.ceil(in_features * p6_ratio / 128) * 128
-        p4_num = in_features - p8_num - p6_num
-        average_bits = 4 * p4_ratio + 6 * p6_ratio + 8 * p8_ratio
-        total_elements += in_features
-        total_bits += 4 * p4_num + 6 * p6_num + 8 * p8_num
-        print(f'p4_num is {p4_num}, p6_num is {p6_num}, p8_num is {p8_num}, avg:{average_bits:.2f}')
-        p6_nums[key] = p6_num
-        p8_nums[key] = p8_num
+        p4_num = in_features - p8_num 
+        average_bits = 4 * p4_ratio + 8 * p8_ratio
         
+        total_elements += in_features
+        total_bits += 4 * p4_num + 8 * p8_num
+        print(key, f'p4_num is {p4_num}, p8_num is {p8_num}, avg:{average_bits:.2f}')
+        p6_nums[key] = 0
+        p8_nums[key] = p8_num
+
     print(f'average bits is {total_bits / total_elements}')
     
     for h in hooks:
@@ -132,7 +128,7 @@ def main():
         os.makedirs(folder_path)
     
     start_time = time.time()
-    print("Getting reorder indices and 4/6/8 ratios...")
+    print("Getting reorder indices and 4/8 ratios...")
     
     reorder_index, p8_num, p6_num, smooth_scales = get_act_stats(
         model, "cuda:0", enc, seqlen=args.seqlen, num_samples=args.samples

@@ -245,7 +245,6 @@ class QLlamaAttention(nn.Module):
         self.k_proj = self.k_proj.to(*args, **kwargs)
         self.v_proj = self.v_proj.to(*args, **kwargs)
         self.o_proj = self.o_proj.to(*args, **kwargs)
-        self.rotary_emb = self.rotary_emb.to(*args, **kwargs)
       
         return self
 
