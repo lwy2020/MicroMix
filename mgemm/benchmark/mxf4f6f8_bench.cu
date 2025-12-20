@@ -10,8 +10,6 @@
 #include <iostream>
 #include <functional>
 
-#include "gemm_utils.h"
-
 using namespace cute;
 
 using ElementC = cutlass::bfloat16_t;
@@ -67,8 +65,8 @@ float perform_benchmark(
     cudaEvent_t start, stop;
     CHECK_CUDA(cudaEventCreate(&start));
     CHECK_CUDA(cudaEventCreate(&stop));
-    //warm up
-    for (int it = 0; it < 10; ++it) {
+
+    for (int it = 0; it < 20; ++it) {
         kernel_to_run();
     }
 
@@ -119,22 +117,11 @@ void run_benchmark(
     cutlass::NumericConverter<typename ElementA::ScaleFactorType, float, cutlass::FloatRoundStyle::round_to_nearest> converterSFA;
     cutlass::NumericConverter<typename ElementB::ScaleFactorType, float, cutlass::FloatRoundStyle::round_to_nearest> converterSFB;
 
-    initialize_matrix_random(A, M * K);
-    initialize_matrix_random(B, N * K);
-    initialize_matrix_random(C, M * N);
-    // initialize_matrix(A, M * K, 0.f);
-    // initialize_matrix(B, N * K, 0.f);
-    // initialize_matrix(C, M * N, 0.5f);
-
-    initialize_matrix_random(scaleA, szA);
-    initialize_matrix_random(scaleB, szB);
-
-
-    // for (int i = 0; i < M * K; ++i) { A[i] = converterA(static_cast<float>(std::rand()) / RAND_MAX * 480.0f - 240.0f); }
-    // for (int i = 0; i < N * K; ++i) { B[i] = converterB(static_cast<float>(std::rand()) / RAND_MAX * 480.0f - 240.0f); }
-    // for (int i = 0; i < M * N; ++i) { C[i] = static_cast<ElementC>(static_cast<float>(std::rand()) / RAND_MAX * 480.0f - 240.0f); }
-    // for (size_t i = 0; i < szA; ++i) { scaleA[i] = converterSFA(static_cast<float>(std::rand()) / RAND_MAX * 255.0f); }
-    // for (size_t i = 0; i < szB; ++i) { scaleB[i] = converterSFB(static_cast<float>(std::rand()) / RAND_MAX * 255.0f); }
+    for (int i = 0; i < M * K; ++i) { A[i] = converterA(static_cast<float>(std::rand()) / RAND_MAX * 480.0f - 240.0f); }
+    for (int i = 0; i < N * K; ++i) { B[i] = converterB(static_cast<float>(std::rand()) / RAND_MAX * 480.0f - 240.0f); }
+    for (int i = 0; i < M * N; ++i) { C[i] = static_cast<ElementC>(0.f); }
+    for (size_t i = 0; i < szA; ++i) { scaleA[i] = converterSFA(static_cast<float>(std::rand()) / RAND_MAX * 255.0f); }
+    for (size_t i = 0; i < szB; ++i) { scaleB[i] = converterSFB(static_cast<float>(std::rand()) / RAND_MAX * 255.0f); }
 
     typename ElementA::DataType *A_d;
     typename ElementB::DataType *B_d;
@@ -161,7 +148,7 @@ void run_benchmark(
 
     if (do_validation) {
         auto kernel_val_lambda = [&]() {
-            kernel_to_run(A_d, SFA_d, B_d, SFB_d, C_d, D_d, M, N, K);
+            kernel_to_run(A_d, SFA_d, B_d, SFB_d, D_d, M, N, K);
         };
         auto ref_val_lambda = [&]() {
             ref_kernel_to_run(A_d, B_d, M, N, K, C_d, D_d_ref, SFA_d, SFB_d);
@@ -170,7 +157,7 @@ void run_benchmark(
     }
 
     auto kernel_bench_lambda = [&]() {
-        kernel_to_run(A_d, SFA_d, B_d, SFB_d, C_d, D_d, M, N, K);
+        kernel_to_run(A_d, SFA_d, B_d, SFB_d, D_d, M, N, K);
     };
 
     float milliseconds = perform_benchmark(timed_iters, kernel_bench_lambda);
@@ -208,10 +195,10 @@ void launch_and_run_benchmark(int M, int N, int K, int timed_iters, bool do_vali
     auto kernel_launcher =
         [=](typename EA::DataType* pA, typename EA::ScaleFactorType* pSFA,
             typename EB::DataType* pB, typename EB::ScaleFactorType* pSFB,
-            ElementC* pC,
-            ElementD* pD, 
-            int m, int n, int k) {
-        gemm_host_tn<N_STAGE, BM, BN, BK>(pA, pSFA, pB, pSFB, pC, pD, m, n, k);
+            ElementD* pD, int m, int n, int k) {
+        gemm_host_tn<typename EA::DataType, typename EB::DataType, ElementD,
+                     typename EA::ScaleFactorType, BM, BN, BK, N_STAGE
+        >(pA, pSFA, pB, pSFB, pD, m, n, k);
     };
     auto ref_kernel_launcher =
             [=](typename EA::DataType* pA, typename EB::DataType* pB,
@@ -234,7 +221,7 @@ void default_matmul_host(
         typename EA::ScaleFactorType *SFA,
         typename EB::ScaleFactorType *SFB
 ){
-    print("\n\nThis GEMM kernel has no REF implementation, does not support VAL!\n\n");
+    print("This GEMM has no REF function, does not support VAL!\n");
 }
 int main(int argc, char** argv) {
     int M = 2048;

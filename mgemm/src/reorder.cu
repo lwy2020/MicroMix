@@ -9,7 +9,6 @@
 
 #include <cstdio>
 
-#include "sm120_sf_layout.h"
 
 #define HOST_DEVICE __forceinline__ __host__ __device__
 #define DEVICE __forceinline__ __device__
@@ -18,8 +17,6 @@
 #define FP4_MAX 6
 #define FP6_MAX 28
 #define FP8_MAX 448
-
-#define SF_BLOCK_SIZE_MN  32 
 
 typedef cutlass::float_e2m1_t fp4_t;
 typedef cutlass::float_e3m2_t fp6_t;
@@ -185,7 +182,7 @@ __global__ void reorder_quantize_mixed_kernel(
     auto logical_coord0 = make_coord(make_coord(row_id % 32, (row_id / 32) % 4), row_id / 128);
     auto logical_coord1 = make_coord(make_coord(0, idx % 4), idx / 4);
     auto logical_coord2 = make_coord(0, 0);
-    f8scale(make_coord(logical_coord0, logical_coord1)) = converterSF(scale);
+    f8scale(make_coord(logical_coord0, logical_coord1, logical_coord2)) = converterSF(scale);
   }
   else if(tid >= bdx - GROUP_NUM(KO + KS)) {
     // fp6 quant
@@ -197,7 +194,7 @@ __global__ void reorder_quantize_mixed_kernel(
     auto logical_coord0 = make_coord(make_coord(row_id % 32, (row_id / 32) % 4), row_id / 128);
     auto logical_coord1 = make_coord(make_coord(0, idx % 4), idx / 4);
     auto logical_coord2 = make_coord(0, 0);
-    f6scale(make_coord(logical_coord0, logical_coord1)) = converterSF(scale);
+    f6scale(make_coord(logical_coord0, logical_coord1, logical_coord2)) = converterSF(scale);
   }
   else {
     // fp4 quant
@@ -208,7 +205,7 @@ __global__ void reorder_quantize_mixed_kernel(
     auto logical_coord0 = make_coord(make_coord(row_id % 32, (row_id / 32) % 4), row_id / 128);
     auto logical_coord1 = make_coord(make_coord(0, tid % 4), tid / 4);
     auto logical_coord2 = make_coord(0, 0);
-    f4scale(make_coord(logical_coord0, logical_coord1)) = converterSF(scale);
+    f4scale(make_coord(logical_coord0, logical_coord1, logical_coord2)) = converterSF(scale);
   }
 
   // Use reverse scale to replace devision by multiplication
@@ -359,7 +356,7 @@ __global__ void reorder_quantize_mxfp4_kernel(
     auto logical_coord0 = make_coord(make_coord(row_id % 32, (row_id / 32) % 4), row_id / 128);
     auto logical_coord1 = make_coord(make_coord(0, idx % 4), idx / 4);
     auto logical_coord2 = make_coord(0, 0);
-    f8scale(make_coord(logical_coord0, logical_coord1)) = converterSF(scale);
+    f8scale(make_coord(logical_coord0, logical_coord1, logical_coord2)) = converterSF(scale);
   }
   else if(tid >= bdx - GROUP_NUM(KO + KS)) {
     // fp4 quant
@@ -371,7 +368,7 @@ __global__ void reorder_quantize_mxfp4_kernel(
     auto logical_coord0 = make_coord(make_coord(row_id % 32, (row_id / 32) % 4), row_id / 128);
     auto logical_coord1 = make_coord(make_coord(0, idx % 4), idx / 4);
     auto logical_coord2 = make_coord(0, 0);
-    f6scale(make_coord(logical_coord0, logical_coord1)) = converterSF(scale);
+    f6scale(make_coord(logical_coord0, logical_coord1, logical_coord2)) = converterSF(scale);
   }
   else {
     // fp4 quant
@@ -382,7 +379,7 @@ __global__ void reorder_quantize_mxfp4_kernel(
     auto logical_coord0 = make_coord(make_coord(row_id % 32, (row_id / 32) % 4), row_id / 128);
     auto logical_coord1 = make_coord(make_coord(0, tid % 4), tid / 4);
     auto logical_coord2 = make_coord(0, 0);
-    f4scale(make_coord(logical_coord0, logical_coord1)) = converterSF(scale);
+    f4scale(make_coord(logical_coord0, logical_coord1, logical_coord2)) = converterSF(scale);
   }
 
   // Use reverse scale to replace devision by multiplication
@@ -452,9 +449,9 @@ void run_reorder_quantize_x(
   // static_assert(KN % 128 == 0 && KS % 128 == 0 && KO % 128 == 0, "TMA requires 32bytes alignment.");
   dim3 grids(seq_len);
   dim3 blocks(hidden_dim / 32);
-  Tensor sfan_tensor = cute::make_tensor(normal_scale, filter_zeros(sm120_get_SFA_layout<SF_BLOCK_SIZE_MN>(seq_len, KN)));
-  Tensor sfas_tensor = cute::make_tensor(sensitive_scale, filter_zeros(sm120_get_SFA_layout<SF_BLOCK_SIZE_MN>(seq_len, KS)));
-  Tensor sfao_tensor = cute::make_tensor(outlier_scale, filter_zeros(sm120_get_SFA_layout<SF_BLOCK_SIZE_MN>(seq_len, KO)));
+  Tensor sfan_tensor = cute::make_tensor(normal_scale, filter_zeros(normal::get_layoutSFA(seq_len, KN)));
+  Tensor sfas_tensor = cute::make_tensor(sensitive_scale, filter_zeros(sensitive::get_layoutSFA(seq_len, KS)));
+  Tensor sfao_tensor = cute::make_tensor(outlier_scale, filter_zeros(outlier::get_layoutSFA(seq_len, KO)));
   reorder_quantize_mixed_kernel<hidden_dim / 32, group_size, hidden_dim><<<grids, blocks>>>(
     (bf16_t *)hidden_states,
     (int16_t *)reorder_index,
@@ -489,9 +486,9 @@ void run_reorder_quantize_w(
   // static_assert(KN % 128 == 0 && KS % 128 == 0 && KO % 128 == 0, "TMA requires 32bytes alignment.");
   dim3 grids(out_features);
   dim3 blocks(hidden_dim / 32);
-  Tensor sfbn_tensor = cute::make_tensor(normal_scale, filter_zeros(sm120_get_SFB_layout<SF_BLOCK_SIZE_MN>(out_features, KN)));
-  Tensor sfbs_tensor = cute::make_tensor(sensitive_scale, filter_zeros(sm120_get_SFB_layout<SF_BLOCK_SIZE_MN>(out_features, KS)));
-  Tensor sfbo_tensor = cute::make_tensor(outlier_scale, filter_zeros(sm120_get_SFB_layout<SF_BLOCK_SIZE_MN>(out_features, KO)));
+  Tensor sfbn_tensor = cute::make_tensor(normal_scale, filter_zeros(normal::get_layoutSFB(out_features, KN)));
+  Tensor sfbs_tensor = cute::make_tensor(sensitive_scale, filter_zeros(sensitive::get_layoutSFB(out_features, KS)));
+  Tensor sfbo_tensor = cute::make_tensor(outlier_scale, filter_zeros(outlier::get_layoutSFB(out_features, KO)));
   reorder_quantize_mixed_kernel<hidden_dim / 32, group_size, hidden_dim><<<grids, blocks>>>(
     (bf16_t *)hidden_states,
     (int16_t *)reorder_index,
@@ -526,9 +523,9 @@ void run_reorder_quantize_w4(
   // static_assert(KN % 128 == 0 && KS % 128 == 0 && KO % 128 == 0, "TMA requires 32bytes alignment.");
   dim3 grids(out_features);
   dim3 blocks(hidden_dim / 32);
-  Tensor sfbn_tensor = cute::make_tensor(normal_scale, filter_zeros(sm120_get_SFB_layout<SF_BLOCK_SIZE_MN>(out_features, KN)));
-  Tensor sfbs_tensor = cute::make_tensor(sensitive_scale, filter_zeros(sm120_get_SFB_layout<SF_BLOCK_SIZE_MN>(out_features, KS)));
-  Tensor sfbo_tensor = cute::make_tensor(outlier_scale, filter_zeros(sm120_get_SFB_layout<SF_BLOCK_SIZE_MN>(out_features, KO)));
+  Tensor sfbn_tensor = cute::make_tensor(normal_scale, filter_zeros(normal::get_layoutSFB(out_features, KN)));
+  Tensor sfbs_tensor = cute::make_tensor(sensitive_scale, filter_zeros(sensitive::get_layoutSFB(out_features, KS)));
+  Tensor sfbo_tensor = cute::make_tensor(outlier_scale, filter_zeros(outlier::get_layoutSFB(out_features, KO)));
   reorder_quantize_mxfp4_kernel<hidden_dim / 32, group_size, hidden_dim><<<grids, blocks>>>(
     (bf16_t *)hidden_states,
     (int16_t *)reorder_index,

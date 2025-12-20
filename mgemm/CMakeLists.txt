@@ -49,13 +49,12 @@ include_directories(${CUTLASS_ROOT}/examples/common)
 
 # 设置 CMake CUDA 架构目标
 set(CMAKE_CUDA_ARCHITECTURES 120a)
-add_compile_options(-g)
-add_compile_options(-lineinfo)
+
 add_compile_options(-w)
 add_compile_options(-fpermissive)
 
-file(GLOB GEMM_SOURCES CONFIGURE_DEPENDS "src/*.cu")
-add_library(gemm_objs OBJECT ${GEMM_SOURCES})
+add_library(gemm_objs OBJECT src/w4a4.cu src/w4a6.cu src/w4a8.cu src/w6a6.cu src/w8a8.cu src/gemm.cu src/reorder.cu src/rmsnorm.cu src/activate.cu src/flashinfer.cu)
+
 
 # 创建目标可执行文件
 
@@ -81,11 +80,3 @@ add_definitions(-DTORCH_EXTENSION_NAME=mixedgemm)
 add_executable(bench_mxf4f6f8 benchmark/mxf4f6f8_bench.cu)
 target_compile_options(bench_mxf4f6f8 PRIVATE -Xptxas=-v -lineinfo -w -O3)
 target_link_libraries(bench_mxf4f6f8 gemm_objs)
-
-add_executable(bench_mxf4f8 benchmark/mxf4f8_bench.cu)
-target_compile_options(bench_mxf4f8 PRIVATE -Xptxas=-v -lineinfo -w -O3)
-target_link_libraries(bench_mxf4f8 gemm_objs)
-
-add_executable(bench_cutlass_mxf4f6f8 benchmark/cutlass_mxf4f6f8_bench.cu)
-target_compile_options(bench_cutlass_mxf4f6f8 PRIVATE -Xptxas=-v -lineinfo -w -O3)
-target_link_libraries(bench_cutlass_mxf4f6f8 gemm_objs)

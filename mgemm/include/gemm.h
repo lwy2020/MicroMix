@@ -19,12 +19,12 @@
     } while (0)
 
 void matmul_host(
-        cutlass::float_e2m1_t *AN,
-        cutlass::float_e2m1_t *BN,
-        cutlass::float_e3m2_t *AS,
-        cutlass::float_e3m2_t *BS,
-        cutlass::float_e4m3_t *AO,
-        cutlass::float_e4m3_t *BO,
+        const cutlass::float_e2m1_t *AN,
+        const cutlass::float_e2m1_t *BN,
+        const cutlass::float_e3m2_t *AS,
+        const cutlass::float_e3m2_t *BS,
+        const cutlass::float_e4m3_t *AO,
+        const cutlass::float_e4m3_t *BO,
         int M,
         int N,
         int KN,
@@ -32,44 +32,21 @@ void matmul_host(
         int KO,
         cutlass::bfloat16_t *C,
         cutlass::bfloat16_t *D,
-        cutlass::float_ue8m0_t *SFAN,
-        cutlass::float_ue8m0_t *SFBN,
-        cutlass::float_ue8m0_t *SFAS,
-        cutlass::float_ue8m0_t *SFBS,
-        cutlass::float_ue8m0_t *SFAO,
-        cutlass::float_ue8m0_t *SFBO
-);
-
-void matmul_host_dev(
-        cutlass::float_e2m1_t *AN,
-        cutlass::float_e2m1_t *BN,
-        cutlass::float_e3m2_t *AS,
-        cutlass::float_e3m2_t *BS,
-        cutlass::float_e4m3_t *AO,
-        cutlass::float_e4m3_t *BO,
-        int M,
-        int N,
-        int KN,
-        int KS,
-        int KO,
-        cutlass::bfloat16_t *C,
-        cutlass::bfloat16_t *D,
-        cutlass::float_ue8m0_t *SFAN,
-        cutlass::float_ue8m0_t *SFBN,
-        cutlass::float_ue8m0_t *SFAS,
-        cutlass::float_ue8m0_t *SFBS,
-        cutlass::float_ue8m0_t *SFAO,
-        cutlass::float_ue8m0_t *SFBO,
-        cudaStream_t stream = 0
+        const cutlass::float_ue8m0_t *SFAN,
+        const cutlass::float_ue8m0_t *SFBN,
+        const cutlass::float_ue8m0_t *SFAS,
+        const cutlass::float_ue8m0_t *SFBS,
+        const cutlass::float_ue8m0_t *SFAO,
+        const cutlass::float_ue8m0_t *SFBO
 );
 
 void matmul_w4_host(
-        cutlass::float_e2m1_t *AN,
-        cutlass::float_e2m1_t *BN,
-        cutlass::float_e3m2_t *AS,
-        cutlass::float_e2m1_t *BS,
-        cutlass::float_e4m3_t *AO,
-        cutlass::float_e2m1_t *BO,
+        const cutlass::float_e2m1_t *AN,
+        const cutlass::float_e2m1_t *BN,
+        const cutlass::float_e3m2_t *AS,
+        const cutlass::float_e2m1_t *BS,
+        const cutlass::float_e4m3_t *AO,
+        const cutlass::float_e2m1_t *BO,
         int M,
         int N,
         int KN,
@@ -77,10 +54,10 @@ void matmul_w4_host(
         int KO,
         cutlass::bfloat16_t *C,
         cutlass::bfloat16_t *D,
-        cutlass::float_ue8m0_t *SFAN,
-        cutlass::float_ue8m0_t *SFBN,
-        cutlass::float_ue8m0_t *SFAS,
-        cutlass::float_ue8m0_t *SFBS,
-        cutlass::float_ue8m0_t *SFAO,
-        cutlass::float_ue8m0_t *SFBO
+        const cutlass::float_ue8m0_t *SFAN,
+        const cutlass::float_ue8m0_t *SFBN,
+        const cutlass::float_ue8m0_t *SFAS,
+        const cutlass::float_ue8m0_t *SFBS,
+        const cutlass::float_ue8m0_t *SFAO,
+        const cutlass::float_ue8m0_t *SFBO
 );

@@ -173,38 +173,4 @@ sm120_get_SF_layout(int M, int N, int K)
     auto layout_SFB = tile_to_shape(SfKMajorAtom{}, make_shape(N,K), Step<_2,_1>{});
     return make_tuple(layout_SFA, layout_SFB);
 }
-
-template<int BMN>
-CUTE_HOST_DEVICE
-auto
-sm120_get_SFA_layout(int M, int K)
-{
-    constexpr int BK = 128;
-    constexpr int SFVecSize = 32;
-    // static_assert(SFVecSize == 32, "SFVecSize should always be 32");
-    // static_assert(BK == 128, "BK should always be 128");
-    // static_assert(BM == BN, "BM and BN should always be same");
-    using SfKMajorAtom  = Layout< Shape< Shape<Int<BMN/4>,_4>, Shape<Int<SFVecSize>, _4>>,
-            Stride<Stride<_16,_4>, Stride<           _0, _1>>>;
-    auto layout_SFA = tile_to_shape(SfKMajorAtom{}, make_shape(M,K), Step<_2,_1>{});
-    // auto layout_SFB = tile_to_shape(SfKMajorAtom{}, make_shape(N,K), Step<_2,_1>{});
-    return layout_SFA;
-}
-
-template<int BMN>
-CUTE_HOST_DEVICE
-auto
-sm120_get_SFB_layout(int N, int K)
-{
-    constexpr int BK = 128;
-    constexpr int SFVecSize = 32;
-    // static_assert(SFVecSize == 32, "SFVecSize should always be 32");
-    // static_assert(BK == 128, "BK should always be 128");
-    // static_assert(BM == BN, "BM and BN should always be same");
-    using SfKMajorAtom  = Layout< Shape< Shape<Int<BMN/4>,_4>, Shape<Int<SFVecSize>, _4>>,
-            Stride<Stride<_16,_4>, Stride<           _0, _1>>>;
-    // auto layout_SFA = tile_to_shape(SfKMajorAtom{}, make_shape(M,K), Step<_2,_1>{});
-    auto layout_SFB = tile_to_shape(SfKMajorAtom{}, make_shape(N,K), Step<_2,_1>{});
-    return layout_SFB;
-}
 #endif //SM120_BLOCKSCALED_GEMM_SM120_SF_LAYOUT_H
