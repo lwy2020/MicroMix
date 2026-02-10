@@ -101,6 +101,7 @@ def get_act_stats(model, dataloader, device_, metric='mean', seqlen=2048):
         model.model.norm = model.model.norm.to(device)
     layers[0] = layers[0].to(device)
 
+    model.to(device)
     dtype = next(iter(model.parameters())).dtype
     inps = torch.zeros(
         (nsamples, seqlen, model.config.hidden_size), dtype=dtype, device=device
@@ -132,6 +133,7 @@ def get_act_stats(model, dataloader, device_, metric='mean', seqlen=2048):
     if not model.model.norm.weight.is_meta:
         model.model.norm = model.model.norm.cpu()
     torch.cuda.empty_cache()
+    model.cpu()
 
     outs = torch.zeros_like(inps)
     attention_mask = cache['attention_mask']
@@ -258,9 +260,9 @@ def search_p4_p6_proportions(model, dataloader, device_, seqlen, reorder_index, 
             keys = keys.reshape(-1, keys.shape[-1]).contiguous()
             seqlen, in_features = keys.shape 
        
-            p4_threshold = keys.max(dim=-1, keepdim=True)[0] * math.pow(2, 1) / 254 * 8 / 6 *2
+            p4_threshold = keys.max(dim=-1, keepdim=True)[0] * math.pow(2, 1) / 254 * 8 / 6 
             # p6_threshold = keys.max(dim=-1, keepdim=True)[0] * math.pow(2, 1) / 254 * 32 / 7.5  #E2M3
-            p6_threshold = keys.max(dim=-1, keepdim=True)[0] * math.pow(2, 3) / 254 * 32 / 28 *2   #E3M2
+            p6_threshold = keys.max(dim=-1, keepdim=True)[0] * math.pow(2, 3) / 254 * 32 / 28   #E3M2
      
             p4_ratio = (keys < p4_threshold).sum() / keys.numel()
             p6_ratio = (keys < p6_threshold).sum() / keys.numel() - p4_ratio

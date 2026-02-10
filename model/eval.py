@@ -15,8 +15,8 @@ def eval_ppl(model, testenc, dev):
     testenc = testenc.input_ids
     nsamples = testenc.numel() // 2048
     layers = model.model.layers
-    model.cpu()
-    model.model.embed_tokens = model.model.embed_tokens.to(dev)
+    model.cuda()
+    # model.model.embed_tokens = model.model.embed_tokens.to(dev)
     layers[0] = layers[0].to(dev)
 
     dtype = next(iter(model.parameters())).dtype
@@ -46,7 +46,8 @@ def eval_ppl(model, testenc, dev):
     layers[0] = layers[0].module
 
     layers[0] = layers[0].cpu()
-    model.model.embed_tokens = model.model.embed_tokens.cpu()
+    model.cpu()
+    # model.model.embed_tokens = model.model.embed_tokens.cpu()
     torch.cuda.empty_cache()
 
     outs = torch.zeros_like(inps)

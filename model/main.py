@@ -143,7 +143,7 @@ if __name__ == '__main__':
         lm.model.to('cuda')
         
     if args.eval_ppl:
-        datasets = ['wikitext2', 'c4']
+        datasets = ['wikitext2']
 
         for dataset in datasets:
             dataloader, testloader = get_loaders(

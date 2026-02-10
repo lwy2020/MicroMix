@@ -5,7 +5,8 @@ import math
 from transformers.models.llama.modeling_llama import LlamaDecoderLayer, LlamaRMSNorm, LlamaAttention, LlamaMLP
 from qLinearLayer import QLinearLayer
 
-
+import sys
+sys.path.append('./mgemm/build/')
 import mixedgemm
 
 @torch.no_grad()

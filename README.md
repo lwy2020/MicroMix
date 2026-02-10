@@ -1,5 +1,5 @@
 # MicroMix
-MicroMix is a mixed-precision quantization method using MXFP8/MXFP6/MXFP4. (paper: [arxiv](https://arxiv.org/abs/2508.02343))
+[ICLR 2026] MicroMix is a mixed-precision quantization method using MXFP8/MXFP6/MXFP4. (paper: [arxiv](https://arxiv.org/abs/2508.02343))
 ![](/figures/main.png)
 
 ## 1. Installation
@@ -38,7 +38,7 @@ bash test.sh /PATH/TO/YOUR/MODEL/
 bash eval_plus/test.sh Qwen/Qwen2.5-Coder-32B-Instruct  '32B'
 ```
 
-If you want to use the MicroMix kernel but not our algorithm, you can directly set p4_num, p6_num, p8_num (line 41-43 in /model/qLinearLayer.py) as the numbers you want 😄
+If you want to use the mixed-precision kernel but not our algorithm, you can directly set p4_num, p6_num, p8_num (line 41-43 in /model/qLinearLayer.py) as the numbers you want 😄
 
 ## 3. Efficiency Evaluation
 MicroMix efficiency:

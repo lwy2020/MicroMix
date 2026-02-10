@@ -1,6 +1,6 @@
 # MixedGemm for MicroMix
 
-**MixedGemm** is a mixed-precision GEMM with quantize and reorder kernel performed on Blackwell GPUs (RTX5090).
+**MixedGemm** is a mixed-precision GEMM with quantize and reorder kernel performed on Blackwell GPUs (RTX5090, PRO 6000).
 
 ## Building Kernels
 
