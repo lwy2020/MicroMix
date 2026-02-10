@@ -37,14 +37,13 @@ class QLinearLayer(nn.Module):
         else:
             self.bias = None
         
-        self.p6_num = 0  #p4_num, p6_num, p8_num需要整除128
-        self.p8_num = p8_num + p6_num
+        self.p6_num = p6_num   #p4_num, p6_num, p8_num需要整除128
+        self.p8_num = p8_num
         self.p4_num = self.in_features - p8_num - p6_num
        
        
         out_features, in_features = originalLayer.weight.data.shape
-
-        # micromix
+        
         self.reorder_index = reorder_index.to(torch.int16).cuda()
 
         
@@ -60,12 +59,14 @@ class QLinearLayer(nn.Module):
     def forward(self, x):
         bsz, q_len, _ = x.shape
         x = x.reshape(bsz*q_len, -1).contiguous() 
-            
-        if q_len == 1:
-            AN, AS, AO, SFAN, SFAS, SFAO = mixedgemm.reorder_quantize_x(x, self.reorder_index, 0, 0, self.in_features)
-        else:
-            AN, AS, AO, SFAN, SFAS, SFAO = mixedgemm.reorder_quantize_x(x, self.reorder_index, self.p4_num, self.p6_num, self.p8_num)
+        # x = hadamard_transform(x).contiguous()
+        # if q_len == 1:
+        #     AN, AS, AO, SFAN, SFAS, SFAO = mixedgemm.reorder_quantize_x(x, self.reorder_index, 0, 0, self.in_features)
+        #     # y = mixedgemm.matmul(AN, self.BN_d, AS, self.BS_d, AO, self.BO_d, SFAN, self.SFBN_d, SFAS, self.SFBS_d, SFAO, self.SFBO_d)
+        # else:
+        AN, AS, AO, SFAN, SFAS, SFAO = mixedgemm.reorder_quantize_x(x, self.reorder_index, self.p4_num, self.p6_num, self.p8_num)
         y = mixedgemm.matmul(AN, self.BN, AS, self.BS, AO, self.BO, SFAN, self.SFBN, SFAS, self.SFBS, SFAO, self.SFBO)
+            
         if self.bias is not None:
             y = y + self.bias
 

@@ -15,7 +15,7 @@
 #define HOST __forceinline__ __host__
 
 #define FP4_MAX 6
-#define FP6_MAX 28
+#define FP6_MAX 28sz
 #define FP8_MAX 448
 
 typedef cutlass::float_e2m1_t fp4_t;

@@ -107,6 +107,10 @@ if __name__ == '__main__':
     model.eval()
 
     if args.do_quant:
+        from smooth import smooth_lm
+        act_scale = torch.load(f'./saved/{model_name}.pt')
+        smooth_lm(model, act_scale)
+        
         index_filename = f'./saved/{model_name}_reorder_index_wikitext2.pt'
         p6_num_filename = f'./saved/{model_name}_p6_num_wikitext2.pt'
         p8_num_filename = f'./saved/{model_name}_p8_num_wikitext2.pt'

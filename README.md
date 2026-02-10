@@ -1,6 +1,9 @@
 # MicroMix
 MicroMix is a mixed-precision quantization method using MXFP8/MXFP6/MXFP4. (paper: [arxiv](https://arxiv.org/abs/2508.02343))
-![](/figures/main.png)
+
+![](./figures/main.png)
+
+We are still continuously updating MicroMix. For the ICLR 2026 version, please refer to the `micromix` branch.
 
 ## 1. Installation
 ```bash
@@ -20,7 +23,7 @@ pip install -r requirements.txt
 ### 2.1 Preprocessing
 Reorder_indices, p6_num, p8_num are needed for quantization:
 ```bash
-python reorder_indices.py --model /PATH/TO/YOUR/MODEL/ --samples 32 --seqlen 2048 --act_sort_metric mean
+python reorder_indices.py --model /PATH/TO/YOUR/MODEL/ --samples 32 --seqlen 2048 --act_sort_metric mean --lamda 1.0
 ```
 Results are saved in saved/
 ### 2.2 Building Kernels
@@ -33,27 +36,7 @@ cd mgemm/
 bash test.sh /PATH/TO/YOUR/MODEL/
 ```
 
-### 2.4 Code Generation Evaluation
-```bash
-bash eval_plus/test.sh Qwen/Qwen2.5-Coder-32B-Instruct  '32B'
-```
-
-If you want to use the MicroMix kernel but not our algorithm, you can directly set p4_num, p6_num, p8_num (line 41-43 in /model/qLinearLayer.py) as the numbers you want 😄
-
 ## 3. Efficiency Evaluation
-MicroMix efficiency:
-```bash
-python benchmarks/benchmark_e2e_micromix.py --model 'llama-3.1-8b' --batch_size 8 --prefill_seq_len 2048
-```
-FP16 efficiency:
-```bash
-python benchmarks/benchmark_e2e_fp16.py --model /PATH/TO/YOUR_MODEL --batch_size 8 --prefill_seq_len 2048
-```
-INT8 efficiency:
-```bash
-pip install bitsandbytes==0.47.0
-python benchmarks/benchmark_e2e_int8.py --model /PATH/TO/YOUR_MODEL --batch_size 12 --prefill_seq_len 2048
-```
 
 ## Citation
 ```
@@ -75,3 +58,4 @@ Our code is built on the following repos, thank you for your contributions to co
 - [FlashInfer](https://github.com/flashinfer-ai/flashinfer/tree/main)
 - [CUTLASS](https://github.com/NVIDIA/cutlass)
 - [lm-evaluation-harness](https://github.com/EleutherAI/lm-evaluation-harness)
+- [vLLM](https://github.com/vllm-project/vllm)
