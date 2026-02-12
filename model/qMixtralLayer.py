@@ -4,12 +4,74 @@ import torch.nn.functional as F
 from typing import List, Optional, Tuple
 import math
 from tqdm import tqdm
-from transformers.models.mixtral.modeling_mixtral import MixtralDecoderLayer, MixtralRMSNorm, MixtralSdpaAttention, MixtralSparseMoeBlock, MixtralBlockSparseTop2MLP
-from qLinearLayer import QLinearLayer
+from transformers.models.mixtral.modeling_mixtral import MixtralDecoderLayer, MixtralRMSNorm, MixtralAttention, MixtralSparseMoeBlock, MixtralBlockSparseTop2MLP
+from transformers.modeling_utils import ALL_ATTENTION_FUNCTIONS
 
 import sys
 sys.path.append('./mgemm/build/')
 import mixedgemm
+
+class QLinearLayer(nn.Module):
+    def __init__(
+        self,
+        originalLayer: nn.Linear,
+        p8_num, 
+        p6_num,
+        reorder_index,
+        out_reorder_index=None,
+    ):
+        super().__init__()
+      
+        self.in_features = originalLayer.in_features
+        self.out_features = originalLayer.out_features
+    
+        
+        if originalLayer.bias is not None:
+            self.register_buffer('bias', originalLayer.bias)
+        else:
+            self.bias = None
+        
+        self.p6_num = p6_num  #p4_num, p6_num, p8_num需要整除128
+        self.p8_num = p8_num
+        self.p4_num = self.in_features - p6_num -p8_num
+       
+       
+       
+        out_features, in_features = originalLayer.weight.data.shape
+
+        # micromix
+        self.reorder_index = reorder_index.to(torch.int16).cuda()
+
+        
+        self.BN, self.BS, self.BO, self.SFBN, self.SFBS, self.SFBO = mixedgemm.reorder_quantize_w4(originalLayer.weight.data, self.reorder_index, self.p4_num, self.p6_num, self.p8_num)
+
+        # self.BN_d, self.BS_d, self.BO_d, self.SFBN_d, self.SFBS_d, self.SFBO_d = mixedgemm.reorder_quantize_w4(originalLayer.weight.data, self.reorder_index, 0, 0, self.in_features)
+        
+        reorder_index.cpu()
+        del reorder_index
+        torch.cuda.empty_cache()
+
+    @torch.no_grad()
+    def forward(self, x):
+        # print(x.shape)
+        if len(x.shape) == 3:
+            bsz, q_len, _ = x.shape
+            x = x.reshape(bsz*q_len, -1).contiguous() 
+        else: 
+            bsz = None
+            q_len, _ = x.shape
+        if q_len == 1:
+            AN, AS, AO, SFAN, SFAS, SFAO = mixedgemm.reorder_quantize_x(x, self.reorder_index, 0, 0, self.in_features)
+        else:
+            AN, AS, AO, SFAN, SFAS, SFAO = mixedgemm.reorder_quantize_x(x, self.reorder_index, self.p4_num, self.p6_num, self.p8_num)
+        y = mixedgemm.matmul(AN, self.BN, AS, self.BS, AO, self.BO, SFAN, self.SFBN, SFAS, self.SFBS, SFAO, self.SFBO)
+        if self.bias is not None:
+            y = y + self.bias
+        if bsz is not None:
+            y = y.reshape(bsz, q_len, -1)
+        return y
+
+
 
 @torch.no_grad()
 def quantize_int_group(w, nbits, group_size):
@@ -30,7 +92,7 @@ def rotate_half(x):
     x2 = x[..., x.shape[-1] // 2 :]
     return torch.cat((-x2, x1), dim=-1)
 
-def apply_rotary_pos_emb(q, k, cos, sin, position_ids, unsqueeze_dim=1):
+def apply_rotary_pos_emb(q, k, cos, sin, position_ids=None, unsqueeze_dim=1):
     """Applies Rotary Position Embedding to the query and key tensors.
 
     Args:
@@ -38,9 +100,8 @@ def apply_rotary_pos_emb(q, k, cos, sin, position_ids, unsqueeze_dim=1):
         k (`torch.Tensor`): The key tensor.
         cos (`torch.Tensor`): The cosine part of the rotary embedding.
         sin (`torch.Tensor`): The sine part of the rotary embedding.
-        position_ids (`torch.Tensor`):
-            The position indices of the tokens corresponding to the query and key tensors. For example, this can be
-            used to pass offsetted position ids when working with a KV-cache.
+        position_ids (`torch.Tensor`, *optional*):
+            Deprecated and unused.
         unsqueeze_dim (`int`, *optional*, defaults to 1):
             The 'unsqueeze_dim' argument specifies the dimension along which to unsqueeze cos[position_ids] and
             sin[position_ids] so that they can be properly broadcasted to the dimensions of q and k. For example, note
@@ -51,8 +112,8 @@ def apply_rotary_pos_emb(q, k, cos, sin, position_ids, unsqueeze_dim=1):
     Returns:
         `tuple(torch.Tensor)` comprising of the query and key tensors rotated using the Rotary Position Embedding.
     """
-    cos = cos[position_ids].unsqueeze(unsqueeze_dim)
-    sin = sin[position_ids].unsqueeze(unsqueeze_dim)
+    cos = cos.unsqueeze(unsqueeze_dim)
+    sin = sin.unsqueeze(unsqueeze_dim)
     q_embed = (q * cos) + (rotate_half(q) * sin)
     k_embed = (k * cos) + (rotate_half(k) * sin)
     return q_embed, k_embed
@@ -76,7 +137,8 @@ class QMixtralDecoderLayer(nn.Module):
         p8_nums,
         p6_nums,
         reorder_index,
-        layer_idx
+        layer_idx,
+        **kwargs
     ):
         super().__init__()
        
@@ -87,7 +149,8 @@ class QMixtralDecoderLayer(nn.Module):
             p8_nums=p8_nums,
             p6_nums=p6_nums,
             reorder_index=reorder_index,
-            i=layer_idx
+            i=layer_idx,
+            **kwargs
         )
         # self.self_attn = originalLayer.self_attn
         self.block_sparse_moe = QMixtralSparseMoeBlock(
@@ -120,13 +183,9 @@ class QMixtralDecoderLayer(nn.Module):
         self,
         hidden_states: torch.Tensor,
         attention_mask: Optional[torch.Tensor] = None,
-        position_ids: Optional[torch.LongTensor] = None,
         past_key_value: Optional[Tuple[torch.Tensor]] = None,
-        output_attentions: Optional[bool] = False,
-        output_router_logits: Optional[bool] = False,
-        use_cache: Optional[bool] = False,
-        cache_position: Optional[torch.LongTensor] = None,
-        position_embeddings = None
+        position_embeddings = None,
+        **kwargs,
     ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
         residual = hidden_states
 
@@ -136,11 +195,7 @@ class QMixtralDecoderLayer(nn.Module):
         hidden_states, self_attn_weights, present_key_value = self.self_attn(
             hidden_states=hidden_states,
             attention_mask=attention_mask,
-            position_ids=position_ids,
             past_key_value=past_key_value,
-            output_attentions=output_attentions,
-            use_cache=use_cache,
-            cache_position=cache_position,
             position_embeddings=position_embeddings,
         )
         hidden_states = residual + hidden_states
@@ -152,15 +207,6 @@ class QMixtralDecoderLayer(nn.Module):
         hidden_states = residual + hidden_states
 
         outputs = (hidden_states,)
-
-        if output_attentions:
-            outputs += (self_attn_weights,)
-
-        if use_cache:
-            outputs += (present_key_value,)
-
-        if output_router_logits:
-            outputs += (router_logits,)
             
         return outputs
     
@@ -197,7 +243,7 @@ class QMixtralAttention(nn.Module):
 
     def __init__(
         self, 
-        originalAttn: MixtralSdpaAttention,
+        originalAttn: MixtralAttention,
         kv_cache,
         p8_nums,
         p6_nums,
@@ -208,20 +254,12 @@ class QMixtralAttention(nn.Module):
         
         self.q_kv_cache = kv_cache
         self.config = originalAttn.config
-        self.hidden_size = originalAttn.hidden_size
-        self.num_heads = originalAttn.num_heads
-        self.head_dim = self.hidden_size // self.num_heads
-        self.num_key_value_heads = originalAttn.num_key_value_heads
+
+        self.head_dim = originalAttn.head_dim
         self.num_key_value_groups = originalAttn.num_key_value_groups
-        self.max_position_embeddings = originalAttn.max_position_embeddings
-        self.rope_theta = originalAttn.rope_theta
         self.layer_idx = i
-        if (self.head_dim * self.num_heads) != self.hidden_size:
-            raise ValueError(
-                f"hidden_size must be divisible by num_heads (got `hidden_size`: {self.hidden_size}"
-                f" and `num_heads`: {self.num_heads})."
-            )
-            
+        self.scaling = self.head_dim**-0.5
+        
         nameTemplate = 'layers.{}.{}.{}.{}'
         self.q_proj = QLinearLayer(
             originalAttn.q_proj,
@@ -247,14 +285,8 @@ class QMixtralAttention(nn.Module):
             p6_num=p6_nums[nameTemplate.format(i, 'self_attn', 'o_proj', 'input')],
             reorder_index=reorder_index[nameTemplate.format(i, 'self_attn', 'o_proj', 'input')]
         )
-        self.register_buffer('q_reorder_index', reorder_index[nameTemplate.format(i, 'self_attn', 'q_proj', 'input')].to(torch.int16))
-        self.register_buffer('o_reorder_index', reorder_index[nameTemplate.format(i, 'self_attn', 'o_proj', 'input')].to(torch.int16))
-        
-        self.rotary_emb = originalAttn.rotary_emb
+     
         self.attention_dropout=originalAttn.attention_dropout
-
-    def _shape(self, tensor: torch.Tensor, seq_len: int, bsz: int):
-        return tensor.view(bsz, seq_len, self.num_heads, self.head_dim).transpose(1, 2).contiguous()
 
     def to(self, *args, **kwargs):
         super(QMixtralAttention, self).to(*args, **kwargs)
@@ -262,9 +294,6 @@ class QMixtralAttention(nn.Module):
         self.k_proj = self.k_proj.to(*args, **kwargs)
         self.v_proj = self.v_proj.to(*args, **kwargs)
         self.o_proj = self.o_proj.to(*args, **kwargs)
-        self.rotary_emb = self.rotary_emb.to(*args, **kwargs)
-        self.q_reorder_index = self.q_reorder_index.to(*args, **kwargs)
-        self.o_reorder_index = self.o_reorder_index.to(*args, **kwargs)
       
         return self
 
@@ -279,39 +308,16 @@ class QMixtralAttention(nn.Module):
         use_cache: bool = False,
         cache_position: Optional[torch.LongTensor] = None,
         position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+        **kwargs
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
-        
-
         bsz, q_len, _ = hidden_states.size()
         
-        hidden_states = hidden_states.reshape(bsz*q_len, -1).contiguous().detach()
+        query_states = self.q_proj(hidden_states).view(bsz, q_len, -1, self.head_dim).transpose(1, 2)
+        key_states = self.k_proj(hidden_states).view(bsz, q_len, -1, self.head_dim).transpose(1, 2)
+        value_states = self.v_proj(hidden_states).view(bsz, q_len, -1, self.head_dim).transpose(1, 2)
         
-        AN, AS, AO, SFAN, SFAS, SFAO = mixedgemm.reorder_quantize_x(hidden_states, self.q_reorder_index, self.q_proj.p4_num, self.q_proj.p6_num, self.q_proj.p8_num)
-        torch.cuda.synchronize()
-        
-        hidden_states = (AN, AS, AO, SFAN, SFAS, SFAO, bsz, q_len)
-        query_states = self.q_proj(hidden_states).view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
-        key_states = self.k_proj(hidden_states).view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
-        value_states = self.v_proj(hidden_states).view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
-
-        kv_seq_len = key_states.shape[-2]
-        if past_key_value is not None:
-            kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
-        
-        # Fake quantize the key_states.
-        # Preserve the position embedding info by first quantize.
-        
-        
-        # cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
-        if position_embeddings is None:
-            cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
-         
-        else:
-            cos, sin = position_embeddings
-
-        if self.q_kv_cache:
-            key_states = quantize_int_group(key_states, nbits=4, group_size=128)
-        query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
+        cos, sin = position_embeddings
+        query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
         
         # [bsz, nh, t, hd]
 
@@ -320,43 +326,21 @@ class QMixtralAttention(nn.Module):
             cache_kwargs = {"sin": sin, "cos": cos, "cache_position": cache_position}
             key_states, value_states = past_key_value.update(key_states, value_states, self.layer_idx, cache_kwargs)
 
-        # past_key_value = (key_states, value_states) if use_cache else None
-
-        key_states = repeat_kv(key_states, self.num_key_value_groups)
-        value_states = repeat_kv(value_states, self.num_key_value_groups)
-       
-        causal_mask = attention_mask
-        if attention_mask is not None:
-            causal_mask = causal_mask[:, :, :, : key_states.shape[-2]]
+        attention_interface = ALL_ATTENTION_FUNCTIONS[self.config._attn_implementation]
             
-        if self.q_kv_cache:
-            value_states = quantize_int_group(value_states, nbits=4, group_size=128)
-            
-            
-        if query_states.device.type == "cuda" and causal_mask is not None:
-            query_states = query_states.contiguous()
-            key_states = key_states.contiguous()
-            value_states = value_states.contiguous()
-        is_causal = True if causal_mask is None and q_len > 1 else False
-        attn_output = torch.nn.functional.scaled_dot_product_attention(
+        attn_output, attn_weights = attention_interface(
+            self,
             query_states,
             key_states,
             value_states,
-            attn_mask=causal_mask,
-            dropout_p=self.attention_dropout if self.training else 0.0,
-            is_causal=is_causal,
+            attention_mask,
+            dropout=self.attention_dropout,
+            scaling=self.scaling,
+            sliding_window=getattr(self.config, "sliding_window", None),  # main diff with Llama
+            **kwargs,
         )
-
-        attn_output = attn_output.transpose(1, 2).contiguous()
         attn_output = attn_output.reshape(bsz, q_len, -1)
         
-        # Quantize the attention output
-      
-        attn_output = attn_output.reshape(bsz*q_len, -1).contiguous().detach()
-
-        AN, AS, AO, SFAN, SFAS, SFAO = mixedgemm.reorder_quantize_x(attn_output, self.o_reorder_index, self.o_proj.p4_num, self.o_proj.p6_num, self.o_proj.p8_num)
-        torch.cuda.synchronize()
-        attn_output = (AN, AS, AO, SFAN, SFAS, SFAO, bsz, q_len)
         attn_output = self.o_proj(attn_output)
 
         if not output_attentions:
@@ -483,9 +467,6 @@ class QMixtralBlockSparseTop2MLP(nn.Module):
             p6_num=p6_nums[nameTemplate.format(layer_idx, 'block_sparse_moe', 'experts', moe_idx, 'w2', 'input')],
             reorder_index=reorder_index[nameTemplate.format(layer_idx, 'block_sparse_moe', 'experts', moe_idx, 'w2', 'input')]
         )
-        self.register_buffer('w1_reorder_index', reorder_index[nameTemplate.format(layer_idx, 'block_sparse_moe', 'experts', moe_idx, 'w1', 'input')].to(torch.int16))
-        self.register_buffer('w2_reorder_index', reorder_index[nameTemplate.format(layer_idx, 'block_sparse_moe', 'experts', moe_idx, 'w2', 'input')].to(torch.int16))
-
         self.act_fn = originalBlock.act_fn
         
     def to(self, *args, **kwargs):
@@ -493,27 +474,11 @@ class QMixtralBlockSparseTop2MLP(nn.Module):
         self.w1 = self.w1.to(*args, **kwargs)
         self.w2 = self.w2.to(*args, **kwargs)
         self.w3 = self.w3.to(*args, **kwargs)
-        self.w2_reorder_index = self.w2_reorder_index.to(*args, **kwargs)
-        self.w1_reorder_index = self.w1_reorder_index.to(*args, **kwargs)
         
         return self
 
     @torch.no_grad()
     def forward(self, x):
-        # input X: [b, seq, dim]: quantized
-        q_len, _ = x.shape
-        # x = x.reshape(bsz*q_len, -1).contiguous().detach()
-
-        AN, AS, AO, SFAN, SFAS, SFAO = mixedgemm.reorder_quantize_x(x, self.w1_reorder_index, self.w1.p4_num, self.w1.p6_num, self.w1.p8_num)
-        torch.cuda.synchronize()
-        x = (AN, AS, AO, SFAN, SFAS, SFAO, None, q_len)
         tmpResult = self.act_fn(self.w1(x)) * self.w3(x)
-        # Quantize the activations and feed into down_proj
-        # bsz, q_len, _ = tmpResult.shape
-        # tmpResult = tmpResult.reshape(bsz*q_len, -1).contiguous().detach()
-
-        AN, AS, AO, SFAN, SFAS, SFAO = mixedgemm.reorder_quantize_x(tmpResult, self.w2_reorder_index, self.w2.p4_num, self.w2.p6_num, self.w2.p8_num)
-        torch.cuda.synchronize()
-        tmpResult = (AN, AS, AO, SFAN, SFAS, SFAO, None, q_len)
        
         return self.w2(tmpResult)

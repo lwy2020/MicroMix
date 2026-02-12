@@ -6,7 +6,6 @@ import numpy as np
 import torch
 import time
 
-import flashinfer
 import torch
 import transformers
 import dataclasses

@@ -289,7 +289,7 @@ class QLlamaAttention(nn.Module):
         # Fake quantize the key_states.
         # Preserve the position embedding info by first quantize.
         if self.q_kv_cache:
-            key_states = quantize_int_group(key_states, nbits=4, group_size=128)
+            key_states = quantize_int_group(key_states, nbits=4, group_size=64)
         
         # cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
         if position_embeddings is None:
@@ -316,7 +316,7 @@ class QLlamaAttention(nn.Module):
             causal_mask = causal_mask[:, :, :, : key_states.shape[-2]]
             
         if self.q_kv_cache:
-            value_states = quantize_int_group(value_states, nbits=4, group_size=128)
+            value_states = quantize_int_group(value_states, nbits=4, group_size=64)
             
             
         if query_states.device.type == "cuda" and causal_mask is not None:

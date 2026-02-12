@@ -1,0 +1,12 @@
+2026-02-10 18:34:43 - Results for llama-3.1-8b on piqa,arc_challenge,boolq,winogrande,lambada_openai:
+|    Tasks     |Version|Filter|n-shot|  Metric  |   |Value |   |Stderr|
+|--------------|------:|------|-----:|----------|---|-----:|---|-----:|
+|arc_challenge |      1|none  |     0|acc       |↑  |0.4599|±  |0.0146|
+|              |       |none  |     0|acc_norm  |↑  |0.5085|±  |0.0146|
+|boolq         |      2|none  |     0|acc       |↑  |0.7954|±  |0.0071|
+|lambada_openai|      1|none  |     0|acc       |↑  |0.7326|±  |0.0062|
+|              |       |none  |     0|perplexity|↓  |3.5555|±  |0.0705|
+|piqa          |      1|none  |     0|acc       |↑  |0.7824|±  |0.0096|
+|              |       |none  |     0|acc_norm  |↑  |0.8025|±  |0.0093|
+|winogrande    |      1|none  |     0|acc       |↑  |0.7032|±  |0.0128|
+
